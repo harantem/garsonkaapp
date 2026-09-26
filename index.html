@@ -1,0 +1,985 @@
+<!DOCTYPE html>
+<html lang="sk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Garsónka – Apartment Tracker</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#f7f8fa; --card:#ffffff; --ink:#111116; --muted:#6e7178; --line:#e7e9ee;
+    --accent:#006aff; --accent-soft:#e6f0ff; --save:#1a8a4c; --save-bg:#e9f6ef; --reject:#d12d2d; --reject-bg:#fdeeee;
+    --chip:#f1f3f6; --shadow:0 1px 2px rgba(17,17,22,.04),0 6px 16px rgba(17,17,22,.05); --shadow-lg:0 16px 40px rgba(17,17,22,.12); --ring:0 0 0 3px rgba(0,106,255,.16);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:'Inter',-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+       background:var(--bg);color:var(--ink);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+  a{color:inherit}
+  .app{display:flex;min-height:100vh}
+  /* Sidebar */
+  .side{width:260px;flex:0 0 260px;background:#fff;border-right:1px solid var(--line);
+        position:sticky;top:0;height:100vh;overflow-y:auto;padding:20px 14px;display:flex;flex-direction:column;gap:6px}
+  .brand{font-weight:800;font-size:17px;padding:4px 10px 14px;letter-spacing:-.2px;color:var(--accent)}
+  .brand small{display:block;font-weight:500;color:var(--muted);font-size:11px;margin-top:3px}
+  .navbtn{display:flex;align-items:center;justify-content:space-between;gap:8px;border:none;background:transparent;
+          text-align:left;padding:11px 13px;border-radius:11px;cursor:pointer;font-size:14px;font-weight:500;color:var(--ink);width:100%;transition:background .12s ease}
+  .navbtn:hover{background:var(--chip)}
+  .navbtn.active{background:var(--accent-soft);color:var(--accent);font-weight:700}
+  .navbtn .count{background:rgba(17,17,22,.07);border-radius:20px;padding:1px 9px;font-size:12px;font-weight:600}
+  .navbtn.active .count{background:rgba(0,106,255,.16);color:var(--accent)}
+  .side .learn{margin-top:auto;border-top:1px solid var(--line);padding-top:12px}
+  .learn h4{margin:0 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)}
+  .learn .tag{display:inline-block;background:var(--reject-bg);color:var(--reject);border-radius:20px;
+              padding:3px 9px;font-size:11px;margin:0 4px 4px 0}
+  .learn .empty{color:var(--muted);font-size:12px}
+  .resetbtn{margin-top:10px;font-size:11px;color:var(--muted);background:none;border:none;cursor:pointer;text-decoration:underline;padding:4px}
+  /* Main */
+  .main{flex:1;padding:22px 26px;max-width:1180px}
+  .head{display:flex;align-items:baseline;gap:12px;margin-bottom:18px;flex-wrap:wrap}
+  .head h1{font-size:22px;margin:0;font-weight:800;letter-spacing:-.3px}
+  .head .sub{color:var(--muted);font-size:13px}
+  .syncbar{margin-left:auto;font-size:12px;padding:4px 10px;border-radius:20px;background:var(--chip);color:var(--muted)}
+  .syncbar.ok{background:var(--save-bg);color:var(--save)}
+  .syncbar.warn{background:#fff4e5;color:#b45309}
+  .empty-feed{background:#fff;border:1px dashed var(--line);border-radius:12px;padding:48px;text-align:center;color:var(--muted)}
+  /* Card */
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);
+        margin-bottom:16px;overflow:hidden;display:grid;grid-template-columns:260px 1fr 300px;transition:box-shadow .16s ease,transform .16s ease}
+  .card:hover{box-shadow:var(--shadow-lg);transform:translateY(-2px)}
+  .card.removing{opacity:0;transform:translateY(-6px);transition:.25s}
+  .ph{position:relative;background:linear-gradient(135deg,#e7ebf2,#d7deea);min-height:210px}
+  .ph .photolink{position:absolute;inset:0;z-index:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+                 gap:6px;text-decoration:none;color:#41506b}
+  .ph .photolink .cam{font-size:30px;opacity:.85}
+  .ph .photolink .lab{font-weight:600;font-size:13px}
+  .ph .photolink .lab small{display:block;font-weight:500;color:#7b889d;font-size:11px;margin-top:2px}
+  .ph .photolink:hover .lab{text-decoration:underline}
+  .ph img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;z-index:1;background:#d7deea}
+  .ph .price{position:absolute;left:12px;bottom:12px;background:rgba(17,17,22,.9);color:#fff;
+             padding:7px 12px;border-radius:11px;font-weight:800;font-size:16px;letter-spacing:-.2px;z-index:2;backdrop-filter:saturate(140%) blur(2px)}
+  .ph-photos{position:absolute;right:12px;bottom:12px;z-index:2;background:rgba(17,17,22,.78);color:#fff;text-decoration:none;
+             font-size:11px;font-weight:600;padding:6px 9px;border-radius:9px;backdrop-filter:saturate(140%) blur(2px);white-space:nowrap}
+  .ph-photos:hover{background:rgba(17,17,22,.92)}
+  .ph .badge{position:absolute;left:12px;top:12px;background:#fff;color:var(--ink);border-radius:7px;
+             padding:3px 8px;font-size:11px;font-weight:600;box-shadow:var(--shadow);z-index:2}
+  .body{padding:16px 18px;min-width:0}
+  .body h3{margin:0 0 6px;font-size:16px;font-weight:700;letter-spacing:-.2px;line-height:1.32}
+  .body h3 a{text-decoration:none}
+  .body h3 a:hover{text-decoration:underline}
+  .addr{color:var(--muted);margin-bottom:12px;font-size:13px}
+  .addrlink{color:inherit;text-decoration:none}
+  .addrlink:hover{text-decoration:underline;color:var(--accent)}
+  .facts{display:grid;grid-template-columns:1fr 1fr;gap:8px 14px;margin-bottom:12px}
+  .fact{display:flex;flex-direction:column}
+  .fact .k{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;font-weight:600}
+  .fact .v{font-weight:600}
+  .yes{color:var(--save)} .no{color:var(--reject)}
+  .actions{display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;align-items:stretch}
+  .btn{border:none;border-radius:10px;padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer;transition:background .14s ease,box-shadow .14s ease,transform .05s ease}
+  .btn:active{transform:translateY(1px)}
+  .btn-save{background:var(--save-bg);color:var(--save)}
+  .btn-save:hover{background:#d5efdd}
+  .btn-reject{background:var(--reject-bg);color:var(--reject)}
+  .btn-reject:hover{background:#fbddd9}
+  .btn.activeState{outline:2px solid currentColor;outline-offset:-2px}
+  .btn-undo{background:var(--chip);color:var(--ink)}
+  .reason{flex:1 1 200px;min-width:180px;display:flex;flex-direction:column}
+  .reason label{font-size:11px;color:var(--muted);display:block;margin-bottom:3px}
+  .reason textarea{width:100%;flex:1;border:1px solid var(--line);border-radius:9px;padding:7px 10px;
+                   font:inherit;resize:vertical;min-height:34px;background:#fff}
+  .reason textarea:focus{outline:none;border-color:var(--accent);box-shadow:var(--ring)}
+  .reason .saved{color:var(--save);font-size:11px;margin-top:2px;height:12px}
+  .mapwrap{border-left:1px solid var(--line);min-height:210px;position:relative;background:#eef1f5}
+  .mapwrap iframe{width:100%;height:100%;border:0;display:block}
+  .statetag{position:absolute;right:12px;top:12px;z-index:2;border-radius:7px;padding:3px 9px;font-size:11px;font-weight:700}
+  .statetag.saved{background:var(--save);color:#fff}
+  .statetag.rejected{background:var(--reject);color:#fff}
+  @media(max-width:1000px){
+    .card{grid-template-columns:1fr}
+    .ph img{min-height:200px}
+    .mapwrap{border-left:none;border-top:1px solid var(--line);height:240px}
+  }
+  @media(max-width:680px){ .side{display:none} }
+  /* Photo + map-tab additions */
+  .btn-photos{background:var(--chip);color:var(--ink);text-decoration:none;display:inline-flex;align-items:center;gap:5px}
+  .btn-photos:hover{background:#e2e6ec}
+  .topbar{display:flex;gap:20px;align-items:flex-start;margin-bottom:8px}
+  .topbar .head{flex:1;margin-bottom:0}
+  /* Map now lives in the left sidebar, under the All tab */
+  .sidemap-label{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin:14px 2px 6px}
+  #mapview{width:100%;height:230px;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#eef1f5}
+  .ph .price small{display:block;font-weight:500;font-size:10px;opacity:.85;margin-top:-2px;letter-spacing:.5px}
+  .fact .v.big{color:var(--accent);font-size:15px}
+  .addr .added{color:var(--muted)}
+  .sortsel{font:inherit;font-size:12px;padding:5px 9px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);cursor:pointer}
+  .bench{margin-top:4px;font-size:12px;font-weight:600;padding:6px 10px;border-radius:9px;display:inline-block;line-height:1.3}
+  .bench.cheap{background:var(--save-bg);color:var(--save)}
+  .bench.pricey{background:#fff4e5;color:#b45309}
+  .bench.neutral{background:var(--chip);color:var(--muted)}
+  .bench .cheap{color:var(--save)} .bench .pricey{color:#b45309} .bench .neutral{color:var(--muted)}
+  .dealbadge{position:absolute;right:12px;top:12px;z-index:3;background:linear-gradient(135deg,#f97316,#ef4444);color:#fff;
+             padding:4px 9px;border-radius:7px;font-size:11px;font-weight:700;box-shadow:var(--shadow)}
+  .card.deal{outline:2px solid #f97316;outline-offset:-2px}
+  .filters{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:18px;background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px 14px;box-shadow:var(--shadow)}
+  .filters input,.filters select{font:inherit;font-size:13px;padding:8px 11px;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--ink);transition:border-color .12s ease,box-shadow .12s ease}
+  .filters input:focus,.filters select:focus{outline:none;border-color:var(--accent);box-shadow:var(--ring)}
+  .filters input[type=number]{width:118px}
+  .filters .f-text{flex:1;min-width:200px}
+  .filters .f-check{display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;white-space:nowrap}
+  .filters .f-clear{cursor:pointer;background:var(--chip);border:none;border-radius:8px;padding:8px 13px;font-size:13px;color:var(--ink)}
+  .filters .f-clear:hover{background:#e2e6ec}
+  .filters .f-range{display:inline-flex;align-items:center;gap:4px}
+  .filters .f-range b{color:var(--muted)}
+  .filters .f-range input[type=number]{width:120px}
+  .presetbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:13px;color:var(--muted);margin:-6px 2px 12px}
+  .presetbar .pb-label{font-weight:700;color:var(--ink)}
+  .presetbar select,.presetbar .pb-btn{font:inherit;font-size:13px;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);cursor:pointer}
+  .presetbar .pb-btn:hover{background:#f4f5f7}
+  .resultcount{font-size:13px;font-weight:600;color:var(--muted);margin:-6px 2px 14px}
+  .resultcount b{color:var(--accent)}
+  .pin-pop{font-size:13px;min-width:170px}
+  .pin-pop b{display:block;margin-bottom:2px}
+  .pin-pop .pp-price{color:var(--accent);font-weight:700}
+  .pin-pop a{color:var(--accent);text-decoration:none}
+  .pin-pop img{width:100%;height:90px;object-fit:cover;border-radius:6px;margin:6px 0;background:#d7deea}
+  /* Edit lock / login-to-edit */
+  .editbtn{font:inherit;font-size:12px;font-weight:700;padding:7px 13px;border-radius:20px;border:1px solid var(--line);
+           background:#fff;color:var(--accent);cursor:pointer;white-space:nowrap}
+  .editbtn:hover{background:var(--accent-soft)}
+  .editbtn.on{background:var(--save-bg);color:var(--save);border-color:transparent}
+  body.locked .btn-save,body.locked .btn-reject,body.locked .btn-undo{opacity:.5}
+  body.locked .reason textarea{background:#f7f8fa;cursor:pointer}
+  /* Learned-locations chips */
+  #learned-chips{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px}
+  #learned-chips .empty{color:var(--muted);font-size:12px}
+  .bchip{display:inline-flex;align-items:center;gap:5px;background:var(--reject-bg);color:var(--reject);border-radius:20px;padding:3px 6px 3px 11px;font-size:11px;font-weight:600}
+  .bchip button{border:none;background:rgba(180,35,24,.16);color:var(--reject);width:16px;height:16px;border-radius:50%;cursor:pointer;font-size:12px;line-height:1;display:flex;align-items:center;justify-content:center;padding:0}
+  .bchip button:hover{background:rgba(180,35,24,.34)}
+  .block-note{color:var(--muted);font-size:11px;margin-top:7px;line-height:1.35}
+  .learn .tag{cursor:pointer}
+  /* Statistics & Archive pages */
+  .stats-wrap{max-width:860px}
+  .stat-sub{color:var(--muted);font-size:12px;margin-bottom:14px}
+  .stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:16px}
+  .stat{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px 16px;box-shadow:var(--shadow)}
+  .stat .sv{font-size:22px;font-weight:800;color:var(--accent);line-height:1.1}
+  .stat .sl{font-size:12px;color:var(--ink);margin-top:5px;font-weight:600}
+  .stat .ss{font-size:11px;color:var(--muted);margin-top:2px}
+  .stat-card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px 18px;box-shadow:var(--shadow);margin-bottom:16px}
+  .stat-card h3{margin:0 0 4px;font-size:15px}
+  .pie-row{display:flex;align-items:center;gap:24px;flex-wrap:wrap;margin-top:8px}
+  .legend{font-size:13px;display:flex;flex-direction:column;gap:6px}
+  .legend .dot{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:6px;vertical-align:middle}
+  .bars{margin-top:10px;display:flex;flex-direction:column;gap:7px}
+  .bar-row{display:flex;align-items:center;gap:10px;font-size:13px}
+  .bar-row .bn{width:140px;flex:0 0 140px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .bar-row .bb{flex:1;background:var(--chip);border-radius:6px;height:14px;overflow:hidden}
+  .bar-row .bf{display:block;height:100%;background:var(--accent);border-radius:6px}
+  .bar-row .bc{width:26px;text-align:right;color:var(--muted);font-weight:700}
+  table.ovn{width:100%;border-collapse:collapse;margin-top:10px;font-size:13px}
+  table.ovn th,table.ovn td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line)}
+  table.ovn th{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.4px}
+  table.ovn td:first-child{font-weight:700}
+  svg.trend text.ax{font-size:10px;fill:var(--muted)}
+  .muted{color:var(--muted);font-size:13px;padding:6px 0}
+  .arch-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+  .arch-btns{display:flex;gap:8px}
+  .arch-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px}
+  .arch-card{background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden;box-shadow:var(--shadow)}
+  .ac-img{height:130px;background:#d7deea center/cover no-repeat}
+  .ac-body{padding:11px 13px}
+  .ac-price{font-weight:800;color:var(--accent)}
+  .ac-t{font-size:13px;margin:3px 0;line-height:1.3}
+  .ac-t a{text-decoration:none}
+  .ac-meta{font-size:12px;color:var(--muted)}
+  .ac-when{font-size:11px;color:var(--muted);margin-top:5px}
+  .pf-l{display:block;font-size:12px;color:var(--muted);font-weight:600;margin:10px 0 4px}
+  .pf-in{width:100%;border:1px solid var(--line);border-radius:10px;padding:11px 12px;font:inherit;font-size:16px;background:#fff;color:var(--ink)}
+  .pf-in:focus{outline:none;border-color:var(--accent);box-shadow:var(--ring)}
+
+  /* ===== Mobile-only elements (hidden on desktop) ===== */
+  .mobnav{display:none;position:fixed;left:0;right:0;bottom:0;z-index:1200;
+          background:rgba(255,255,255,.96);backdrop-filter:saturate(160%) blur(10px);
+          border-top:1px solid var(--line);padding:6px 4px calc(5px + env(safe-area-inset-bottom))}
+  .mobnav-btn{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:2px;position:relative;
+              border:none;background:transparent;cursor:pointer;color:var(--muted);font:inherit;font-weight:600;
+              padding:5px 2px;border-radius:10px}
+  .mobnav-btn .ic{font-size:18px;line-height:1}
+  .mobnav-btn .lb{font-size:9.5px;letter-spacing:-.2px;white-space:nowrap}
+  .mobnav-btn.active{color:var(--accent)}
+  .mobnav-btn .mcount{position:absolute;top:1px;left:50%;transform:translateX(3px);
+              background:var(--accent);color:#fff;font-size:9px;font-weight:700;line-height:1;
+              padding:2px 5px;border-radius:20px}
+  .mobfilter-toggle{display:none}
+
+  /* ===== Phone layout ===== */
+  @media(max-width:680px){
+    body{font-size:15px}
+    .app{display:block}
+    .main{flex:none;max-width:none;padding:14px 13px calc(74px + env(safe-area-inset-bottom))}
+    .topbar{margin-bottom:8px}
+    .head{gap:7px 10px;align-items:center}
+    .head h1{font-size:19px;flex:1 1 100%;order:1}
+    .head .sub{flex:1 1 100%;order:5;font-size:12px}
+    .editbtn{order:2;margin-left:auto}
+    #sortsel{order:3}
+    .syncbar{order:4;margin-left:0}
+
+    /* collapsible filters + presets */
+    .mobfilter-toggle{display:flex;align-items:center;justify-content:center;gap:7px;width:100%;
+            font:inherit;font-size:14px;font-weight:600;padding:12px;margin-bottom:12px;cursor:pointer;
+            border:1px solid var(--line);border-radius:12px;background:#fff;color:var(--accent);box-shadow:var(--shadow)}
+    .filters{display:none;flex-direction:column;align-items:stretch;gap:9px;padding:12px;margin-bottom:12px}
+    body.filters-open .filters{display:flex}
+    .filters .f-text{min-width:0;width:100%}
+    .filters input,.filters select{font-size:16px}            /* 16px stops iOS auto-zoom on focus */
+    .filters input[type=number]{width:100%}
+    .filters .f-range{display:flex;width:100%;gap:6px}
+    .filters .f-range input[type=number]{flex:1;width:auto}
+    .filters .f-check{padding:4px 0}
+    .filters .f-clear{width:100%;padding:12px}
+    .presetbar{display:none;flex-direction:column;align-items:stretch;gap:8px;margin:0 0 12px}
+    body.filters-open .presetbar{display:flex}
+    .presetbar .pb-label{margin-bottom:2px}
+    .presetbar select,.presetbar .pb-btn{width:100%;padding:11px;font-size:14px}
+
+    /* cards stack (the 1000px rule already does columns; tighten for phones) */
+    .card{border-radius:14px;margin-bottom:13px}
+    .card:hover{transform:none}
+    .ph{min-height:200px}
+    .body{padding:14px 15px}
+    .reason{flex:1 1 100%;min-width:0}
+    .reason textarea{font-size:16px}
+    .actions{gap:8px}
+    .actions .btn{flex:1 1 calc(50% - 4px);padding:12px;font-size:14px;text-align:center}
+    .actions .btn-undo{flex:1 1 100%}
+    .mapwrap{display:none}                 /* no map on phones — address links to Google Maps instead */
+
+    .mobnav{display:flex}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="brand">Garsonka app<small>Bratislava · Staré Mesto · prenájom</small></div>
+    <button class="navbtn active" data-tab="new">🆕 New to review <span class="count" id="c-new">0</span></button>
+    <button class="navbtn" data-tab="saved">♥ Saved <span class="count" id="c-saved">0</span></button>
+    <button class="navbtn" data-tab="rejected">✕ Rejected <span class="count" id="c-rejected">0</span></button>
+    <button class="navbtn" data-tab="all">All <span class="count" id="c-all">0</span></button>
+    <button class="navbtn" data-tab="stats">📊 Statistics</button>
+    <button class="navbtn" data-tab="archive">🗄 Archive <span class="count" id="c-archive">0</span></button>
+    <div class="sidemap-label">📍 Walkable area · 15 min</div>
+    <div id="mapview"></div>
+  </aside>
+  <main class="main">
+    <div class="topbar">
+      <div class="head">
+        <h1 id="tab-title">New to review</h1>
+        <span class="sub" id="tab-sub"></span>
+        <select class="sortsel" id="sortsel" title="Sort listings">
+          <option value="price">↕ Price (low→high)</option>
+          <option value="date">↕ Newest first</option>
+          <option value="m2">↕ €/m² (low→high)</option>
+        </select>
+        <span class="syncbar" id="syncbar">◌ starting…</span>
+      </div>
+    </div>
+    <button class="mobfilter-toggle" id="mobFilterToggle" aria-expanded="false" onclick="document.body.classList.toggle('filters-open');this.setAttribute('aria-expanded',document.body.classList.contains('filters-open'))">🔎 Filters &amp; presets</button>
+    <div class="filters">
+      <input id="f-text" class="f-text" placeholder="🔎 Search title, street, address, type…">
+      <select id="f-street"><option value="">Any street</option></select>
+      <span class="f-range"><input id="f-minprice" type="number" min="0" placeholder="Min €"><b>–</b><input id="f-maxprice" type="number" min="0" placeholder="Max € total"></span>
+      <input id="f-maxm2" type="number" min="0" placeholder="Max €/m²">
+      <span class="f-range"><input id="f-minarea" type="number" min="0" placeholder="Min m²"><b>–</b><input id="f-maxarea" type="number" min="0" placeholder="Max m²"></span>
+      <span class="f-range"><input id="f-minfloor" type="number" min="0" placeholder="Min flr"><b>–</b><input id="f-maxfloor" type="number" min="0" placeholder="Max flr"></span>
+      <select id="f-lift"><option value="">Lift: any</option><option value="1">Lift ✓</option></select>
+      <select id="f-ac"><option value="">A/C: any</option><option value="1">A/C ✓</option></select>
+      <label class="f-check"><input type="checkbox" id="f-deal"> 🔥 deals only</label>
+      <button class="f-clear" id="f-clear">Clear</button>
+    </div>
+    <div class="presetbar">
+      <span class="pb-label">⭐ Saved presets:</span>
+      <select id="f-preset" title="Saved filter presets"><option value="">— pick a preset —</option></select>
+      <button class="pb-btn" id="f-save">💾 Save current filters…</button>
+      <button class="pb-btn" id="f-delpreset" title="Delete selected preset">🗑 Delete</button>
+    </div>
+    <div id="resultcount" class="resultcount"></div>
+    <div id="feed"></div>
+  </main>
+</div>
+
+<nav class="mobnav" aria-label="Sections">
+  <button class="mobnav-btn active" data-tab="new"><span class="ic">🆕</span><span class="lb">New</span><span class="mcount" id="m-c-new">0</span></button>
+  <button class="mobnav-btn" data-tab="saved"><span class="ic">❤️</span><span class="lb">Saved</span><span class="mcount" id="m-c-saved">0</span></button>
+  <button class="mobnav-btn" data-tab="rejected"><span class="ic">❌</span><span class="lb">Reject</span><span class="mcount" id="m-c-rejected">0</span></button>
+  <button class="mobnav-btn" data-tab="all"><span class="ic">🏢</span><span class="lb">All</span><span class="mcount" id="m-c-all">0</span></button>
+  <button class="mobnav-btn" data-tab="stats"><span class="ic">📊</span><span class="lb">Stats</span></button>
+  <button class="mobnav-btn" data-tab="profile"><span class="ic">👤</span><span class="lb">Profile</span></button>
+</nav>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+/* ===== Supabase config — paste your two values between the quotes ===== */
+const SUPABASE_URL      = "https://nfqmwccfeahkpuznkbla.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_VIa_sGDBf3gzVXKCm1wxPg_vMiyjo_w";
+/* ===================================================================== */
+
+const EMBEDDED = {"source": "nehnutelnosti.sk – Bratislava Staré Mesto, 1-izb + garsónky, prenájom", "scrapedAt": "2026-06-13", "count": 20, "listings": [{"id": "JuRgfzENSJF", "title": "Prenájom samostatnej nepriechodnej izby v centre Bratislavy", "address": "Krížna, Bratislava-Staré Mesto, okres Bratislava I", "street": "Krížna", "price": 350, "energie": null, "energiesIncluded": true, "pricePerM2": "31,82", "area": 11, "floor": "1/4", "floorNum": 1, "floorTotal": 4, "lift": false, "buildType": "Zmiešaná", "rooms": "Garsónka", "image": "https://img.unitedclassifieds.sk/foto/ZmlsdGVyczpmb3JtYXQod2VicCkvanVs/lSpoTGHUb_fss", "url": "https://www.nehnutelnosti.sk/detail/JuRgfzENSJF/prenajom-samostatnej-nepriechodnej-izby-v-centre-bratislavy"}, {"id": "JuRAwga1iza", "title": "Prenájom samostatnej izby v 3 izbovom byte s terasou, vlastným dvorom a záhradkou, ako oddelený samostatný byt v rodinnom dome v Bratislave – Staré Mesto, Slávičie údolie.", "address": "Bratislava-Staré Mesto, okres Bratislava I", "street": "Bratislava-Staré Mesto", "price": 400, "energie": null, "energiesIncluded": false, "pricePerM2": "16", "area": 25, "floor": null, "floorNum": null, "floorTotal": null, "lift": false, "buildType": "Novostavba", "rooms": "1-izbový byt", "image": "https://img.unitedclassifieds.sk/foto/ZmlsdGVyczpmb3JtYXQod2VicCkvanVs/P69pWqBFA_fss", "url": "https://www.nehnutelnosti.sk/detail/JuRAwga1iza/prenajom-samostatnej-izby-v-3-izbovom-byte-s-terasou-vlastnym-dvorom-a-zahradkou-ako-oddeleny-samostatny-byt-v-rodinnom-dome-v-bratislave-stare-mesto-slavicie-udolie"}, {"id": "Ju2OXjdfnlT", "title": "Prenájom priestrannej izby v 2 izbovom byte s loggiou – Bratislava – Staré Mesto, lokalita Mozartova", "address": "Bratislava-Staré Mesto, okres Bratislava I", "street": "Bratislava-Staré Mesto", "price": 400, "energie": null, "energiesIncluded": false, "pricePerM2": "22,22", "area": 18, "floor": null, "floorNum": null, "floorTotal": null, "lift": true, "buildType": "Novostavba", "rooms": "Garsónka", "image": "https://img.unitedclassifieds.sk/foto/ZmlsdGVyczpmb3JtYXQod2VicCkvanVs/hDkprp7HB_fss", "url": "https://www.nehnutelnosti.sk/detail/Ju2OXjdfnlT/prenajom-priestrannej-zby-v-2-izbovom-byte-s-loggiou-bratislava-stare-mesto-lokalita-mozartova-v-prijemnom-tichom-prostredi-v-blizkom-dosahu-ku-prirode"}, {"id": "Juev-sCi24h", "title": "AXIS REAL | Pekná štýlová garsónka, PIVNICA, BA I SM, Slávičie údolie", "address": "Slávičie údolie, Bratislava-Staré Mesto, okres Bratislava I", "street": "Slávičie údolie", "price": 450, "energie": 150, "energiesIncluded": false, "pricePerM2": "14,06", "area": 32, "floor": "2/4", "floorNum": 2, "floorTotal": 4, "lift": true, "buildType": "Tehlová", "rooms": "Garsónka", "image": "https://img.unitedclassifieds.sk/foto/ZmlsdGVyczpmb3JtYXQod2VicCkvanVs/RVVIjdtyS_fss", "url": "https://www.nehnutelnosti.sk/detail/Juev-sCi24h/axis-real-pekna-stylova-garsonka-pivnica-ba-i-sm-slavicie-udolie"}, {"id": "Ju70pTFt6GS", "title": "KLIMATIZOVANÝ 1-izbový byt 40 m2, NADSTAVBA, CENTRUM Bratislavy / Heydukova ul.", "address": "Heydukova, Bratislava-Staré Mesto, okres Bratislava I", "street": "Heydukova", "price": 500, "energie": 200, "energiesIncluded": false, "pricePerM2": "12,5", "area": 40, "floor": "5/6", "floorNum": 5, "floorTotal": 6, "lift": true, "buildType": "Novostavba", "rooms": "1-izbový byt", "image": "https://img.unitedclassifieds.sk/foto/ZmlsdGVyczpmb3JtYXQod2VicCkvcnNm/nA0HLELPo_fss", "url": "https://www.nehnutelnosti.sk/detail/Ju70pTFt6GS/klimatizovany-1-izbovy-byt-40-m2-nadstavba-centrum-bratislavy-heydukova-ul"}, {"id": "Ju7AvM-kGnE", "title": "Prenajmeme veľký 1 izb byt na Heydukovej ulici", "address": "Heydukova, Bratislava-Staré Mesto, okres Bratislava I", "street": "Heydukova", "price": 500, "energie": 200, "energiesIncluded": false, "pricePerM2": "12,5", "area": 40, "floor": "5/6", "floorNum": 5, "floorTotal": 6, "lift": true, "buildType": "Tehlová", "rooms": "1-izbový byt", "image": "https://img.unitedclassifieds.sk/foto/ZmlsdGVyczpmb3JtYXQod2VicCkvanVs/NDsXLfws8_fss", "url": "https://www.nehnutelnosti.sk/detail/Ju7AvM-kGnE/prenajmeme-velky-1-izb-byt-na-heydukovej-ulici"}, {"id": "Ju3Q9teGy7p", "title": "BOSEN | Zariadená garzónka s balkónom, Blumentálska ul., BA", "address": "Blumentálska, Bratislava-Staré Mesto, okres Bratislava I", "street": "Blumentálska", "price": 500, "energie": 175, "energiesIncluded": false, "pricePerM2": "19,23", "area": 26, "floor": "5/8", "floorNum": 5, "floorTotal": 8, "lift": false, "buildType": "Zmiešaná", "rooms": "Garsónka", "image": "https://img.unitedclassifieds.sk/foto/ZmlsdGVyczpmb3JtYXQod2VicCkvanVs/n_BzYGVmv_fss", "url": "https://www.nehnutelnosti.sk/detail/Ju3Q9teGy7p/bosen-zariadena-garzonka-s-balkonom-blumentalska-ul-ba"}, {"id": "JuaRg_NbGP9", "title": "Prenájom 1 izb. bytu Steinov dvor", "address": "Steinov dvor, Bratislava-Staré Mesto, okres Bratislava I", "street": "Steinov dvor", "price": 520, "energie": 150, "energiesIncluded": false, "pricePerM2": "14,44", "area": 36, "floor": null, "floorNum": null, "floorTotal": null, "lift": false, "buildType": "Novostavba", "rooms": "1-izbový byt", "image": "https://img.unitedclassifieds.sk/foto/ZmlsdGVyczpmb3JtYXQod2VicCkvanVs/C0NLqwNZu_fss", "url": "https://www.nehnutelnosti.sk/detail/JuaRg_NbGP9/prenajom-1-izb-bytu-steinov-dvor"}, {"id": "JulWJBn0EHz", "title": "Príjemný 2i byt s balkónom, pri Horskom parku a Slavíne. Svetlá ul.", "address": "Svetlá, Bratislava-Staré Mesto, okres Bratislava I", "street": "Svetlá", "price": 520, "energie": 230, "energiesIncluded": false, "pricePerM2": "9,29", "area": 56, "floor": "1/11", "floorNum": 1, "floorTotal": 11, "lift": true, "buildType": "Panelová", "rooms": "2-izbový byt", "image": "https://img.unitedclassifieds.sk/foto/ZmlsdGVyczpmb3JtYXQod2VicCk6d2F0ZXJtYXJrKGp1bC9VSTBzX1VFUXRfZnNzLC0yNSwtMjUsNTAsMjAsMjApL2p1bA==/_Mg3p5V-f_fss", "url": "https://www.nehnutelnosti.sk/detail/JulWJBn0EHz/prijemny-2i-byt-s-balkonom-pri-horskom-parku-a-slavine-svetla-ul"}, {"id": "Jum1vVXXPn9", "title": "Na prenájom moderný 1-izbový byt v novostavbe Steinov dvor – Staré Mesto, Bratislava", "address": "Krížna, Bratislava-Staré Mesto, okres Bratislava I", "street": "Krížna", "price": 520, "energie": 150, "energiesIncluded": false, "pricePerM2": "14,44", "area": 36, "floor": "2/7", "floorNum": 2, "floorTotal": 7, "lift": true, "buildType": "Novostavba", "rooms": "1-izbový byt", "image": "https://img.unitedclassifieds.sk/foto/ZmlsdGVyczpmb3JtYXQod2VicCkvanVs/TGvMQAVS2_fss", "url": "https://www.nehnutelnosti.sk/detail/Jum1vVXXPn9/na-prenajom-moderny-1-izbovy-byt-v-novostavbe-steinov-dvor-stare-mesto-bratislava"}, {"id": "JuU4EhWTxOF", "title": "Pekný, slnečný 1-izbový byt, Malý trh, Staré Mesto", "address": "Malý trh, Bratislava-Staré Mesto, okres Bratislava I", "street": "Malý trh", "price": 550, "energie": null, "energiesIncluded": false, "pricePerM2": "17,19", "area": 32, "floor": "2/4", "floorNum": 2, "floorTotal": 4, "lift": false, "buildType": "Tehlová", "rooms": "1-izbový byt", "image": "https://img.unitedclassifieds.sk/foto/ZmlsdGVyczpmb3JtYXQod2VicCkvanVs/c8jcOlCtP_fss", "url": "https://www.nehnutelnosti.sk/detail/JuU4EhWTxOF/ponukame-na-prenajom-pekny-slnecny-1-izbovy-byt-nachadzajuci-sa-2poschodi4-v-tehlovom-dome-na-malom-trhu-v-lokalite-stare-mesto-byt-je-priestranny"}, {"id": "JuzP9cU5z3G", "title": "Prenájom byty 1 iz. NOVOSTAVBA Blumentál, Radlinského ul. BA I", "address": "Radlinského, Bratislava-Staré Mesto, okres Bratislava I", "street": "Radlinského", "price": 550, "energie": null, "energiesIncluded": false, "pricePerM2": "15,28", "area": 36, "floor": "2/6", "floorNum": 2, "floorTotal": 6, "lift": true, "buildType": "Novostavba", "rooms": "1-izbový byt", "image": "https://img.unitedclassifieds.sk/foto/ZmlsdGVyczpmb3JtYXQod2VicCkvanVs/T35EReNLa_fss", "url": "https://www.nehnutelnosti.sk/detail/JuzP9cU5z3G/prenajom-byty-1-iz-novostavba-blumental-radlinskeho-ul-ba-i"}, {"id": "JuzCOg_jA3y", "title": "REZERVOVANÝ 1-izbový byt na Špitálskej ulici", "address": "Špitálska, Bratislava-Staré Mesto, okres Bratislava I", "street": "Špitálska", "price": 555, "energie": 125, "energiesIncluded": false, "pricePerM2": "13,88", "area": 40, "floor": "4/5", "floorNum": 4, "floorTotal": 5, "lift": true, "buildType": "Tehlová", "rooms": "1-izbový byt", "image": "https://img.unitedclassifieds.sk/foto/ZmlsdGVyczpmb3JtYXQod2VicCk6d2F0ZXJtYXJrKHB1cy9RanAzd1paa2lfZnNzLC0yNSwtMjUsMjAsMjAsMjApL2p1bA==/nkxBPFGd8_fss", "url": "https://www.nehnutelnosti.sk/detail/JuzCOg_jA3y/1-izbovy-byt-na-spitalskej-ulici"}, {"id": "JuQBUw6AU18", "title": "Na prenájom kompletne zariadená garsónka v Starom Meste – Dunajská", "address": "Dunajská, Bratislava-Staré Mesto, okres Bratislava I", "street": "Dunajská", "price": 570, "energie": null, "energiesIncluded": false, "pricePerM2": "38", "area": 15, "floor": "5/6", "floorNum": 5, "floorTotal": 6, "lift": false, "buildType": "Zmiešaná", "rooms": "Garsónka", "image": "https://img.unitedclassifieds.sk/foto/ZmlsdGVyczpmb3JtYXQod2VicCk6d2F0ZXJtYXJrKHB1cy84V05ZaDRueExfZnNzLDI1LC0yNSwwLDIwLDIwKS9qdWw=/RGRkHu_0P_fss", "url": "https://www.nehnutelnosti.sk/detail/JuQBUw6AU18/na-prenajom-kompletne-zariadena-garsonka-v-starom-meste-dunajska"}, {"id": "JulEG0AgFso", "title": "Štýlové bývanie v srdci mesta s veľkou terasou a panoramatickým výhľadom!", "address": "Grösslingova, Bratislava-Staré Mesto, okres Bratislava I", "street": "Grösslingova", "price": 570, "energie": null, "energiesIncluded": false, "pricePerM2": "15,83", "area": 36, "floor": null, "floorNum": null, "floorTotal": null, "lift": true, "buildType": "Novostavba", "rooms": "1-izbový byt", "image": "https://img.unitedclassifieds.sk/foto/ZmlsdGVyczpmb3JtYXQod2VicCk6d2F0ZXJtYXJrKHB1cy83QVlJNC1NS25fZnNzLGNlbnRlcixjZW50ZXIsMCwyMCwyMCkvanVs/lA2NCmvmD_fss", "url": "https://www.nehnutelnosti.sk/detail/JulEG0AgFso/stylove-byvanie-v-srdci-mesta-s-velkou-terasou-a-panoramatickym-vyhladom"}, {"id": "JuYlGqB3kdt", "title": "Prenájom: 1 izbový zariadený byt, BA I – Staré Mesto, Tichá ul.", "address": "Tichá, Bratislava-Staré Mesto, okres Bratislava I", "street": "Tichá", "price": 570, "energie": 200, "energiesIncluded": false, "pricePerM2": "11,18", "area": 51, "floor": "7/10", "floorNum": 7, "floorTotal": 10, "lift": true, "buildType": "Tehlová", "rooms": "1-izbový byt", "image": "https://img.unitedclassifieds.sk/foto/ZmlsdGVyczpmb3JtYXQod2VicCkvanVs/0t79G3r70c_fss", "url": "https://www.nehnutelnosti.sk/detail/JuYlGqB3kdt/prenajom-1-izbovy-zariadeny-byt-ba-i-stare-mesto-ticha-ul"}, {"id": "Juzmx3VlsMc", "title": "1 IZBOVÝ BYT PO KOMPLETNEJ REKONŠTRUKCII s FAMÓZNYM VÝHĽADOM – STARÉ MESTO – Námestie SNP – MANDERLA", "address": "Nám. SNP, Bratislava-Staré Mesto, okres Bratislava I", "street": "Nám. SNP", "price": 590, "energie": 230, "energiesIncluded": false, "pricePerM2": "15,53", "area": 38, "floor": "9/10", "floorNum": 9, "floorTotal": 10, "lift": true, "buildType": "Tehlová", "rooms": "1-izbový byt", "image": "https://img.unitedclassifieds.sk/foto/ZmlsdGVyczpmb3JtYXQod2VicCk6d2F0ZXJtYXJrKHB1cy9xMkFNRXU1T3dfZnNzLGNlbnRlcixjZW50ZXIsMCwyMCwyMCkvanVs/yQPrPWuSLU_fss", "url": "https://www.nehnutelnosti.sk/detail/Juzmx3VlsMc/1-izbovy-byt-po-kompletnej-rekonstrukcii-s-famoznym-vyhladom-stare-mesto-namestie-snp-manderla"}, {"id": "JueJpKjNYoC", "title": "Skvelý 1i byt 20m2, NA KRÁTKODOBÝ PRENÁJOM 6 MESIACOV", "address": "Janáčkova, Bratislava-Staré Mesto, okres Bratislava I", "street": "Janáčkova", "price": 590, "energie": null, "energiesIncluded": false, "pricePerM2": "29,5", "area": 20, "floor": null, "floorNum": null, "floorTotal": null, "lift": false, "buildType": null, "rooms": "1-izbový byt", "image": "https://img.unitedclassifieds.sk/foto/ZmlsdGVyczpmb3JtYXQod2VicCkvanVs/2kkqhwZjFp_fss", "url": "https://www.nehnutelnosti.sk/detail/JueJpKjNYoC/skvely-1i-byt-20m2-na-kratkodoby-prenajom-6-mesiacov"}, {"id": "JuHHRn8MYQM", "title": "Grebeči real | jedinečný a kompletne zrekonštruovaný moderný 1-izbový byt, Námestie SNP", "address": "Námestie SNP, Bratislava-Staré Mesto, okres Bratislava I", "street": "Námestie SNP", "price": 590, "energie": null, "energiesIncluded": false, "pricePerM2": "15,53", "area": 38, "floor": "9/10", "floorNum": 9, "floorTotal": 10, "lift": true, "buildType": "Zmiešaná", "rooms": "1-izbový byt", "image": "https://img.unitedclassifieds.sk/foto/ZmlsdGVyczpmb3JtYXQod2VicCk6d2F0ZXJtYXJrKGp1bC84WWRua05OZVhfZnNzLGNlbnRlcixjZW50ZXIsMTAsMjAsMjApL2p1bA==/h2yFP_fwR_fss", "url": "https://www.nehnutelnosti.sk/detail/JuHHRn8MYQM/grebeci-real-ponuka-na-prenajom-jedinecny-a-kompletne-zrekonstruovany-moderny-1-izbovy-byt-namestie-snp-stare-mesto-bratislava"}, {"id": "JuKmk-fN0UZ", "title": "PRENÁJOM 1-izbový, Staré Mesto Vazovová, nezariadený", "address": "Vazovova, Bratislava-Staré Mesto, okres Bratislava I", "street": "Vazovova", "price": 600, "energie": null, "energiesIncluded": false, "pricePerM2": "15", "area": 40, "floor": "3/6", "floorNum": 3, "floorTotal": 6, "lift": true, "buildType": null, "rooms": "1-izbový byt", "image": "https://img.unitedclassifieds.sk/foto/ZmlsdGVyczpmb3JtYXQod2VicCkvanVs/e1L724lwX_fss", "url": "https://www.nehnutelnosti.sk/detail/JuKmk-fN0UZ/prenajom-1-izbovy-stare-mesto-vazovova-nezariadeny"}]}.listings;   // built-in copy, used as fallback
+let LISTINGS = EMBEDDED.slice();
+const LS_KEY = "garsonka_state_v1";
+let state = loadState();              // { id: {status, reason} }
+let tab = "new";
+let sortBy = localStorage.getItem("garsonka_sort") || "price";
+let filters = (function(){ try{ return JSON.parse(localStorage.getItem("garsonka_filters"))||{}; }catch(e){ return {}; } })();
+let learnIgnore = (function(){ try{ return JSON.parse(localStorage.getItem("garsonka_learn_ignore"))||[]; }catch(e){ return []; } })();
+function saveLearnIgnore(){ localStorage.setItem("garsonka_learn_ignore", JSON.stringify(learnIgnore)); }
+const LEARN_STOP = new Set("a an the and or to of in on is it i its with no not too very for from by this that byt bytu byty izbovy izboveho izbovom izba izby izbe garsonka garsonku garsonky prenajom prenajat novostavba tehlova panelova zmiesana podlazie poschodie vytah mes eur bratislava stare mesto stareho mesta mestom ulica ulici namestie okres centrum srdci prilis daleko blizko draho lacno maly mala male velky velka velke novy nova stylove stylovy moderny pekny slnecny zariadeny nezariadeny kompletne lokalita rekonstrukcia far small big near work flat apartment room floor lift ground expensive cheap nice location area street price month".split(/\s+/));
+function _ltok(s){ return [...new Set(fold(s).split(/[^a-z0-9]+/).filter(w=>w.length>=4 && !LEARN_STOP.has(w) && !/^\d+$/.test(w)))]; }
+function saveFilters(){ localStorage.setItem("garsonka_filters", JSON.stringify(filters)); }
+
+/* ===== Edit lock: view-only by default; password unlocks save/reject for 1 hour or until reload ===== */
+const EDIT_PW_HASH = "2c639a94b46a5261a2e095c6109051072e34fee602d448ac8f0471df091b8bf5"; // SHA-256 of the edit password
+let editUntil = 0;            // in-memory only -> resets on reload, so a page reload re-locks editing
+let _lockTimer = null;
+function _sha256(ascii){
+  function rr(v,a){return (v>>>a)|(v<<(32-a));}
+  var mp=Math.pow,mw=mp(2,32),i,j,res='',words=[],bl=ascii.length*8;
+  var hash=_sha256.h=_sha256.h||[],k=_sha256.k=_sha256.k||[],pc=k.length,ic={};
+  for(var c=2;pc<64;c++){ if(!ic[c]){ for(i=0;i<313;i+=c){ic[i]=c;} hash[pc]=(mp(c,.5)*mw)|0; k[pc++]=(mp(c,1/3)*mw)|0; } }
+  ascii+='\x80'; while(ascii.length%64-56) ascii+='\x00';
+  for(i=0;i<ascii.length;i++){ j=ascii.charCodeAt(i); if(j>>8) return; words[i>>2]|=j<<((3-i)%4)*8; }
+  words[words.length]=((bl/mw)|0); words[words.length]=bl;
+  for(j=0;j<words.length;){
+    var w=words.slice(j,j+=16),oh=hash; hash=hash.slice(0,8);
+    for(i=0;i<64;i++){
+      var w15=w[i-15],w2=w[i-2],a=hash[0],e=hash[4];
+      var t1=hash[7]+(rr(e,6)^rr(e,11)^rr(e,25))+((e&hash[5])^((~e)&hash[6]))+k[i]
+        +(w[i]=(i<16)?w[i]:(w[i-16]+(rr(w15,7)^rr(w15,18)^(w15>>>3))+w[i-7]+(rr(w2,17)^rr(w2,19)^(w2>>>10)))|0);
+      var t2=(rr(a,2)^rr(a,13)^rr(a,22))+((a&hash[1])^(a&hash[2])^(hash[1]&hash[2]));
+      hash=[(t1+t2)|0].concat(hash); hash[4]=(hash[4]+t1)|0;
+    }
+    for(i=0;i<8;i++){ hash[i]=(hash[i]+oh[i])|0; }
+  }
+  for(i=0;i<8;i++){ for(j=3;j+1;j--){ var b=(hash[i]>>(j*8))&255; res+=((b<16)?0:'')+b.toString(16); } }
+  return res;
+}
+function _utf8(s){ return unescape(encodeURIComponent(s)); }
+function canEdit(){ return Date.now() < editUntil; }
+function scheduleLock(){
+  clearTimeout(_lockTimer);
+  const ms = editUntil - Date.now();
+  if(ms>0) _lockTimer=setTimeout(()=>{ editUntil=0; updateEditUI(); render(); }, ms);
+}
+function updateEditUI(){
+  const on=canEdit(); document.body.classList.toggle("locked", !on);
+  const b=document.getElementById("editToggle"); if(!b) return;
+  if(on){ b.textContent="🔓 Editing on — click to lock"; b.classList.add("on"); }
+  else  { b.textContent="🔒 Log in to edit"; b.classList.remove("on"); }
+}
+function unlock(){
+  const pw = prompt("🔒 Enter the password to edit (save / reject):");
+  if(pw==null) return false;                       // cancelled
+  if(_sha256(_utf8(pw))===EDIT_PW_HASH){
+    editUntil = Date.now() + 60*60*1000;            // unlocked for 1 hour
+    scheduleLock(); updateEditUI(); render();
+    return true;
+  }
+  alert("Wrong password — still in view-only mode.");
+  return false;
+}
+function toggleEdit(){
+  if(canEdit()){ editUntil=0; clearTimeout(_lockTimer); updateEditUI(); render(); }  // lock now
+  else { unlock(); }
+}
+function tryStatus(id, status){ if(canEdit() || unlock()) setStatus(id, status); }
+function reasonFocus(ta){ if(!canEdit()){ ta.blur(); unlock(); } }
+
+/* ===== Auto-learn rejected locations from the reasons YOU write =====
+   A word counts as a location only if it appears in BOTH your reason and the
+   listing's own title/address/street — so "too far Blumental" learns "blumental",
+   while "too expensive" or "too small" learn nothing. Learn by exact word, then
+   block by substring (so "blumental" also catches "Blumentálska"). */
+function learnedBlocks(){
+  const set=new Set();
+  LISTINGS.forEach(l=>{
+    if(statusOf(l.id)!=="rejected") return;
+    const reason=reasonOf(l.id);
+    if(!reason || reason.trim().startsWith("🤖")) return;   // learn only from reasons you typed, not auto ones
+    const rt=_ltok(reason); if(!rt.length) return;
+    const loc=new Set(_ltok((l.title||"")+" "+(l.address||"")+" "+(l.street||"")));
+    rt.forEach(w=>{ if(loc.has(w)) set.add(w); });
+  });
+  const ign=new Set(learnIgnore.map(fold));
+  return [...set].filter(w=>!ign.has(fold(w)));
+}
+function matchedLearned(l){
+  const blocks=learnedBlocks(); if(!blocks.length) return [];
+  const hay=fold((l.title||"")+" "+(l.address||"")+" "+(l.street||""));
+  return blocks.filter(w=>hay.indexOf(w)>=0);
+}
+function applyLearned(){
+  const blocks=learnedBlocks(); if(!blocks.length) return 0;
+  const changed=[];
+  LISTINGS.forEach(l=>{
+    if(statusOf(l.id)!=="new") return;            // never touch saved or already-decided listings
+    const m=matchedLearned(l);
+    if(m.length){ state[l.id]={status:"rejected", reason:"🤖 learned: "+m.join(", ")}; changed.push(l.id); }
+  });
+  if(changed.length){
+    saveState();
+    if(sb){ changed.forEach(id=>{ sb.from("apartments")
+      .update({status:"rejected", reason:state[id].reason, updated_at:new Date().toISOString()}).eq("id",id)
+      .then(()=>{}, e=>console.error(e)); }); }
+  }
+  return changed.length;
+}
+function renderLearned(){
+  const box=document.getElementById("learned-chips"); if(!box) return;
+  const blocks=learnedBlocks();
+  box.innerHTML = blocks.length
+    ? blocks.map(w=>`<span class="bchip">${esc(w)}<button title="stop auto-rejecting this" onclick="unlearn('${esc(w)}')">×</button></span>`).join("")
+    : '<span class="empty">Nothing learned yet — reject a flat and name its location in the reason.</span>';
+}
+function unlearn(w){
+  if(!canEdit() && !unlock()) return;
+  if(!learnIgnore.some(x=>fold(x)===fold(w))) learnIgnore.push(w);
+  saveLearnIgnore(); renderLearned(); render();
+}
+function applyFilters(list){
+  const f=filters;
+  return list.filter(l=>{
+    if(f.text){ const hay=((l.title||"")+" "+(l.street||"")+" "+(l.address||"")+" "+(l.buildType||"")+" "+(l.rooms||"")).toLowerCase();
+      if(!f.text.toLowerCase().split(/\s+/).every(w=>hay.includes(w))) return false; }
+    if(f.street && fold(l.street)!==fold(f.street)) return false;
+    if(f.minprice && totalPrice(l) < +f.minprice) return false;
+    if(f.maxprice && totalPrice(l) > +f.maxprice) return false;
+    if(f.maxm2){ const m=perM2(l); if(m!=null && m > +f.maxm2) return false; }
+    if(f.minarea && (+l.area||0) < +f.minarea) return false;
+    if(f.maxarea && (+l.area||1e9) > +f.maxarea) return false;
+    if(f.minfloor){ if(l.floorNum==null || +l.floorNum < +f.minfloor) return false; }
+    if(f.maxfloor){ if(l.floorNum==null || +l.floorNum > +f.maxfloor) return false; }
+    if(f.lift==="1" && !l.lift) return false;
+    if(f.ac==="1" && !l.hasAc) return false;
+    if(f.deal){ const b=benchmark(l); if(!(b && b.pct<=-15)) return false; }
+    return true;
+  });
+}
+
+const sb = (SUPABASE_URL.indexOf("http")===0 && SUPABASE_ANON_KEY.length>20 && window.supabase)
+           ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+// Photos: prefer Supabase Storage (works on any device); fall back to local ./photos/ folder.
+const PHOTO_BASE = (SUPABASE_URL.indexOf("http")===0)
+  ? SUPABASE_URL.replace(/\/+$/,"") + "/storage/v1/object/public/apartment-photos/"
+  : "photos/";
+
+/* ===== 15-min walkable area (for filtering + the Map tab) ===== */
+const ORIGIN = [48.1436, 17.1201];
+const ISO_POLY = [[48.15341, 17.1261], [48.15236, 17.1231], [48.15263, 17.12207], [48.15196, 17.1211], [48.15308, 17.1181], [48.15065, 17.1151], [48.15083, 17.11387], [48.15009, 17.11061], [48.14864, 17.10906], [48.14836, 17.10834], [48.1476, 17.10801], [48.1466, 17.10668], [48.1456, 17.10658], [48.1446, 17.10723], [48.14337, 17.10733], [48.1396, 17.10622], [48.13922, 17.10672], [48.1389, 17.1084], [48.13868, 17.11618], [48.13744, 17.11626], [48.13706, 17.1161], [48.13668, 17.11502], [48.1356, 17.11491], [48.1346, 17.11522], [48.13425, 17.11675], [48.13384, 17.1171], [48.13513, 17.11757], [48.1356, 17.11895], [48.13744, 17.11794], [48.13873, 17.1181], [48.13873, 17.12523], [48.13809, 17.1261], [48.13783, 17.12733], [48.13656, 17.1281], [48.13806, 17.1291], [48.13829, 17.13141], [48.1396, 17.13327], [48.14034, 17.13184], [48.14077, 17.13193], [48.14101, 17.1341], [48.14171, 17.13599], [48.1426, 17.13617], [48.14334, 17.13484], [48.1446, 17.13386], [48.1456, 17.13514], [48.1466, 17.13461], [48.15341, 17.1261]];
+const STREET_COORDS = {"Heydukova": [48.14751, 17.11322], "Poštová": [48.14721, 17.10909], "Špitálska": [48.14838, 17.11613], "Obchodná": [48.14792, 17.11125], "Radlinského": [48.15287, 17.11761], "Námestie 1. mája": [48.15004, 17.1109], "Námestie SNP": [48.14519, 17.11108], "Prístavná": [48.14119, 17.14167], "Koceľova": [48.15348, 17.13015], "Košická": [48.14697, 17.13291], "Mlynské nivy": [48.14536, 17.13444], "Dunajská": [48.14554, 17.11832], "Justičná": [48.15234, 17.12436], "Medená": [48.14146, 17.11169], "Paulínyho": [48.14093, 17.10756], "Hviezdoslavovo námestie": [48.14176, 17.10843], "Moskovská": [48.15036, 17.12252], "Landererova": [48.14255, 17.12562], "Janáčkova": [48.14789, 17.11942], "Bottova": [48.1443, 17.12807], "Blumentálska": [48.15454, 17.12233], "Pribinova": [48.14088, 17.12479], "Školská": [48.15257, 17.11656], "Kúpeľná": [48.14104, 17.11179], "Malý trh": [48.14687, 17.12319], "Grösslingová": [48.14438, 17.11728]};          // canonical street name -> [lat,lon]
+const IN_AREA_NAMES = ["29. augusta", "Alešova", "Alžbetínska", "Americké námestie", "Azovská", "Bazová", "Bezručova", "Biela", "Blumentálska", "Bottova", "Budovateľská", "Cintorínska", "Cukrová", "Čulenova", "Dobrovičova", "Dobrovského", "Dostojevského rad", "Drevená", "Dunajská", "Fajnorovo nábrežie", "Fazuľová", "Ferienčíkova", "Floriánske námestie", "Francisciho", "Františkánska", "Františkánske námestie", "Gajova", "Gondova", "Gorkého", "Grösslingová", "Hamuliakova", "Heydukova", "Hlavné námestie", "Hodžovo námestie", "Hollého", "Hurbanovo námestie", "Hviezdoslavovo námestie", "Chalupkova", "Chorvátska", "Imricha Karvaša", "Jakubovo námestie", "Janáčkova", "Jedlíkova", "Jesenského", "Justičná", "Kamenné námestie", "Kapucínska", "Karadžičova", "Klemensova", "Klobučnícka", "Koceľova", "Kolárska", "Kollárovo námestie", "Komenského námestie", "Kostolná", "Košická", "Krupkova", "Kulíškova", "Kúpeľná", "Landererova", "Laurinská", "Lazaretská", "Lodná", "Lomonosovova", "Lužická", "Májkova", "Malý trh", "Mariánska", "Medená", "Mickiewiczova", "Michalská", "Mlynské nivy", "Moskovská", "Most Apollo", "Mostová", "Múzejná", "Nádvorie Starej radnice", "Námestie 1. mája", "Námestie Eugena Suchoňa", "Námestie Ľudovíta Štúra", "Námestie SNP", "Nedbalova", "Obchodná", "Odborárske námestie", "Olejkárska", "Palackého", "Panská", "Páričkova", "Paulínyho", "Pavlovova", "Plátennícka", "Poľná", "Poľská", "Poštová", "Prešernova", "Pribinova", "Primaciálne námestie", "Prístavná", "Radlinského", "Radničná", "Rajská", "Rázusovo nábrežie", "Revúcka", "Riečna", "Rigeleho", "Rybárska brána", "Sasinkova", "Satinského", "Sedlárska", "Sienkiewiczova", "Strakova", "Strážnická", "Suché mýto", "Súťažná", "Svätoplukova", "Šafárikovo námestie", "Šagátová", "Školská", "Šoltésovej", "Špitálska", "Štúrova", "Tallerova", "Tekovská", "Tobrucká", "Továrenská", "Treskoňova", "Uršulínska", "Vajanského nábrežie", "Valchárska", "Velehradská", "Veterná", "Vysoká", "Záhradnícka", "Zámočnícka", "Zelená", "Živnostenská"];          // 136 canonical street names
+function fold(s){ return (s==null?"":String(s)).normalize("NFD").replace(/[̀-ͯ]/g,"").toLowerCase()
+  .replace(/^nam\.\s*/,"namestie ").replace(/\s+\d+[a-z]?$/,"").replace(/\s+ulica$/,"").trim(); }
+const IN_AREA = new Set(IN_AREA_NAMES.map(fold));
+const COORDS_FOLDED = {}; Object.keys(STREET_COORDS).forEach(k=>{ COORDS_FOLDED[fold(k)] = STREET_COORDS[k]; });
+function inArea(l){ return IN_AREA.has(fold(l.street)); }
+/* Landmarks named in a listing title/address get a precise pin (overrides the long-street midpoint).
+   Keys MUST be lowercase + de-accented (compared against fold(title + address)).
+   To add one: find the place's coordinates, then add  "keyword":{coord:[lat,lon],label:"Name"}.  */
+const LANDMARKS = {
+  "soren": {coord:[48.146454, 17.123168], label:"Soren café"}   // Mlynské nivy 6 (downtown end)
+};
+function landmarkOf(l){
+  const hay = fold((l.title||"")+" "+(l.address||""));
+  for(const k in LANDMARKS){ if(k && hay.indexOf(k)>=0) return LANDMARKS[k]; }
+  return null;
+}
+function coordOf(l){
+  const lm = landmarkOf(l);
+  const base = lm ? lm.coord : COORDS_FOLDED[fold(l.street)];
+  if(!base) return null;
+  // deterministic jitter so multiple listings at one spot don't overlap; tighter for precise landmarks
+  let h=0; const id=l.id||""; for(let i=0;i<id.length;i++) h=(h*31+id.charCodeAt(i))>>>0;
+  const amp = lm ? 0.0004 : 0.0016;
+  const dx=((h%1000)/1000-0.5)*amp, dy=(((h>>>10)%1000)/1000-0.5)*amp;
+  return [base[0]+dx, base[1]+dy];
+}
+
+function loadState(){ try{ return JSON.parse(localStorage.getItem(LS_KEY)) || {}; }catch(e){ return {}; } }
+function saveState(){ localStorage.setItem(LS_KEY, JSON.stringify(state)); }
+function statusOf(id){ return (state[id] && state[id].status) || "new"; }
+function reasonOf(id){ return (state[id] && state[id].reason) || ""; }
+
+function normalizeRow(r){
+  return { id:r.id, title:r.title, address:r.address, street:r.street, price:r.price,
+    energie:r.energie, energiesIncluded:r.energies_included, pricePerM2:r.price_per_m2,
+    area:r.area, floor:r.floor, floorNum:r.floor_num, floorTotal:r.floor_total, lift:r.lift, buildType:r.build_type, rooms:r.rooms,
+    image:r.image, url:r.url, deposit:r.deposit, rkFee:r.rk_fee, hasAc:r.has_ac, scrapedAt:r.scraped_at, listedAt:r.listed_at };
+}
+function totalPrice(l){
+  const p = +l.price||0;
+  if(l.energiesIncluded) return p;
+  if(l.energie!=null && l.energie!=='') return p + (+l.energie||0);
+  return p; // utilities not stated
+}
+function utilLabel(l){
+  if(l.energiesIncluded) return "incl. in rent";
+  if(l.energie!=null && l.energie!=='') return "+"+esc(l.energie)+" € utilities";
+  return "utilities n/a";
+}
+function daysAgo(d){
+  if(!d) return "";
+  const diff=Math.floor((Date.now()-new Date(d.slice(0,10)+"T00:00:00").getTime())/86400000);
+  if(diff<=0) return "listed today";
+  if(diff===1) return "listed 1 day ago";
+  if(diff<7) return "listed "+diff+" days ago";
+  if(diff<14) return "listed 1 week ago";
+  if(diff<60) return "listed "+Math.round(diff/7)+" weeks ago";
+  return "listed "+Math.round(diff/30)+" months ago";
+}
+// ----- price/m² from TOTAL price, and benchmarking against the whole history -----
+function perM2(l){ const a=+l.area; if(!a) return null; return totalPrice(l)/a; }
+function fmtM2(l){ const m=perM2(l); return m==null ? "—" : (Math.round(m*10)/10).toString().replace(".",",")+" €/m²"; }
+function median(arr){ if(!arr.length) return null; const s=[...arr].sort((a,b)=>a-b); const m=s.length>>1; return s.length%2 ? s[m] : (s[m-1]+s[m])/2; }
+let STATS=null;
+function buildStats(){
+  const all=[], byStreet={}, ac=[];
+  LISTINGS.forEach(l=>{ const m=perM2(l); if(m==null) return; const e={id:l.id,m};
+    all.push(e); const k=fold(l.street); (byStreet[k]=byStreet[k]||[]).push(e); if(l.hasAc) ac.push(e); });
+  STATS={all, byStreet, ac};
+}
+function benchmark(l){
+  const m=perM2(l); if(m==null||!STATS) return null;
+  const others = arr => (arr||[]).filter(e=>e.id!==l.id).map(e=>e.m);
+  const streetArr = others(STATS.byStreet[fold(l.street)]);
+  let pool, label;
+  if(streetArr.length>=1){ pool=streetArr; label=streetArr.length+(streetArr.length>1?" others":" other")+" on "+esc((l.street||"").split(",")[0]); }
+  else { pool=others(STATS.all); label="area median ("+pool.length+")"; }
+  if(!pool.length) return null;
+  const ref=median(pool); if(ref==null||!isFinite(ref)||ref===0) return null;
+  const pct=Math.round((m-ref)/ref*100);
+  let acPct=null, acN=0;
+  if(l.hasAc){ const acArr=others(STATS.ac); if(acArr.length>=1){ acN=acArr.length; const r=median(acArr); if(r) acPct=Math.round((m-r)/r*100); } }
+  return {pct, label, acPct, acN};
+}
+function benchChip(l){
+  const b=benchmark(l); if(!b) return "";
+  const word = p => p<0 ? Math.abs(p)+"% cheaper" : (p>0 ? p+"% pricier" : "same price");
+  const cls  = p => p<0 ? "cheap" : (p>0 ? "pricey" : "neutral");
+  let h='<div class="bench '+cls(b.pct)+'">📊 '+word(b.pct)+" per m² than "+b.label;
+  if(b.acPct!=null) h+=' · <span class="'+cls(b.acPct)+'">'+word(b.acPct)+" vs A/C flats ("+b.acN+")</span>";
+  h+='</div>'; return h;
+}
+function sortListings(list){
+  const a=[...list];
+  if(sortBy==="date") a.sort((x,y)=>{ const dx=x.scrapedAt||"", dy=y.scrapedAt||""; if(dx!==dy) return dy.localeCompare(dx); return totalPrice(x)-totalPrice(y); });
+  else if(sortBy==="m2") a.sort((x,y)=>(perM2(x)??1e9)-(perM2(y)??1e9));
+  else a.sort((x,y)=>totalPrice(x)-totalPrice(y)); // price
+  return a;
+}
+function banner(txt, kind){ const el=document.getElementById("syncbar"); if(el){ el.textContent=txt; el.className="syncbar "+(kind||""); } }
+
+async function init(){
+  if(sb){
+    banner("☁ connecting…");
+    try{
+      const { data, error } = await sb.from("apartments").select("*").order("price",{ascending:true});
+      if(error) throw error;
+      if(data && data.length){
+        LISTINGS = data.map(normalizeRow);
+        state = {};
+        data.forEach(r=>{ state[r.id] = {status:r.status||"new", reason:r.reason||""}; });
+        banner("☁ synced with Supabase", "ok");
+      } else {
+        banner("☁ connected — table is empty, run the seed SQL", "warn");
+      }
+    }catch(e){ console.error(e); banner("⚠ Supabase error — using local copy", "warn"); }
+  } else {
+    banner("◌ local mode — saving to this browser only", "warn");
+  }
+  LISTINGS = LISTINGS.filter(inArea);   // only show listings within the 15-min walkable street set
+  applyLearned();                       // auto-reject new listings matching a location learned from your reasons
+  populateStreetFilter();
+  wireFilters();
+  updateEditUI();
+  renderLearned();
+  render();
+  if(sb){ window._snapDone=true; snapshotToday().catch(()=>{}); }   // record today's price snapshot (no-op until stats_setup.sql is run)
+}
+
+async function setStatus(id, status){
+  if(!state[id]) state[id] = {status:"new", reason:""};
+  state[id].status = (state[id].status === status) ? "new" : status; // toggle off if same
+  saveState(); render();
+  if(sb){ try{ await sb.from("apartments").update({status:state[id].status, updated_at:new Date().toISOString()}).eq("id",id); }
+          catch(e){ console.error(e); banner("⚠ couldn't save to Supabase","warn"); } }
+}
+const _reasonTimers={};
+function setReason(id, txt){
+  if(!state[id]) state[id] = {status:"new", reason:""};
+  state[id].reason = txt; saveState(); updateLearn();
+  if(sb){ clearTimeout(_reasonTimers[id]); _reasonTimers[id]=setTimeout(async()=>{
+    try{ await sb.from("apartments").update({reason:txt, updated_at:new Date().toISOString()}).eq("id",id); }
+    catch(e){ console.error(e); } }, 700); }
+}
+
+function esc(s){ return (s==null?"":String(s)).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+function mapSrc(addr){ return "https://maps.google.com/maps?q="+encodeURIComponent(addr+", Bratislava")+"&z=15&output=embed"; }
+function cardMapSrc(l){ const lm=landmarkOf(l); return lm
+  ? "https://maps.google.com/maps?q="+lm.coord[0]+","+lm.coord[1]+"&z=16&output=embed"
+  : mapSrc(l.address); }
+
+function card(l){
+  const st = statusOf(l.id);
+  const liftHtml = l.lift ? '<span class="v yes">Yes ✓</span>' : '<span class="v no">No ✕</span>';
+  const acHtml = l.hasAc ? '<span class="v yes">Yes ✓</span>' : '<span class="v no">No</span>';
+  const floor = l.floor ? esc(l.floor) : "—";
+  const total = totalPrice(l);
+  const deposit = (l.deposit!=null && l.deposit!=='') ? esc(l.deposit)+" €" : "not stated";
+  const rk = (l.rkFee!=null && l.rkFee!=='') ? esc(l.rkFee) : "not stated";
+  const b = benchmark(l);
+  const deal = b && b.pct<=-15;          // ≥15% below its street/area benchmark
+  const tag = st==="saved" ? '<span class="statetag saved">SAVED</span>'
+            : st==="rejected" ? '<span class="statetag rejected">REJECTED</span>' : '';
+  return `
+  <div class="card ${deal?'deal':''}" data-id="${l.id}">
+    <div class="ph">
+      ${deal?`<span class="dealbadge">🔥 Great value · ${Math.abs(b.pct)}% below</span>`:''}
+      ${l.buildType?`<span class="badge">${esc(l.buildType)}</span>`:''}
+      <a class="photolink" href="${esc(l.url)}" target="_blank" rel="noopener">
+        <span class="cam">📷</span>
+        <span class="lab">View photos<small>open on nehnutelnosti.sk ↗</small></span>
+      </a>
+      <img src="${PHOTO_BASE}${esc(l.id)}.webp" alt=""
+           onerror="if(!this.dataset.fb){this.dataset.fb='1';this.src='photos/${esc(l.id)}.webp';}else{this.style.display='none';}">
+      <span class="price">${total} €/mo<small>total</small></span>
+      <a class="ph-photos" href="${esc(l.url)}" target="_blank" rel="noopener">📷 See all photos ↗</a>
+    </div>
+    <div class="body">
+      <h3><a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.title)}</a></h3>
+      <div class="addr"><a class="addrlink" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent((l.address||l.street||"")+", Bratislava")}" target="_blank" rel="noopener">📍 ${esc(l.address)}</a> · <span class="added">${daysAgo(l.listedAt||l.scrapedAt)}</span></div>
+      <div class="facts">
+        <div class="fact"><span class="k">Total price</span><span class="v big">${total} €/mo</span></div>
+        <div class="fact"><span class="k">Rent + utilities</span><span class="v">${esc(l.price)} € · ${utilLabel(l)}</span></div>
+        <div class="fact"><span class="k">Size · €/m² (total)</span><span class="v">${esc(l.area)} m² · ${fmtM2(l)}</span></div>
+        <div class="fact"><span class="k">Floor</span><span class="v">${floor}</span></div>
+        <div class="fact"><span class="k">Lift</span>${liftHtml}</div>
+        <div class="fact"><span class="k">Air conditioning</span>${acHtml}</div>
+      </div>
+      ${benchChip(l)}
+      <div class="actions">
+        <button class="btn btn-save ${st==='saved'?'activeState':''}" title="${canEdit()?'':'🔒 Log in to edit first'}" onclick="tryStatus('${l.id}','saved')">♥ ${st==='saved'?'Saved':'Save'}</button>
+        <button class="btn btn-reject ${st==='rejected'?'activeState':''}" title="${canEdit()?'':'🔒 Log in to edit first'}" onclick="tryStatus('${l.id}','rejected')">✕ ${st==='rejected'?'Rejected':'Reject'}</button>
+        ${st!=='new'?`<button class="btn btn-undo" onclick="tryStatus('${l.id}','${st}')">↩ Move back to All</button>`:''}
+        <div class="reason">
+          <textarea placeholder="Why reject? e.g. too small, no lift, too far…"
+            ${canEdit()?'':'readonly'} onfocus="reasonFocus(this)"
+            oninput="setReason('${l.id}', this.value)"
+            onchange="flashSaved(this)">${esc(reasonOf(l.id))}</textarea>
+        </div>
+      </div>
+    </div>
+    <div class="mapwrap">
+      ${tag}
+      <iframe loading="lazy" src="${cardMapSrc(l)}" title="map"></iframe>
+    </div>
+  </div>`;
+}
+
+function flashSaved(ta){
+  const el = ta.parentElement.querySelector(".saved");
+  if(!el) return;
+  el.textContent = "Saved ✓"; setTimeout(()=>{ el.textContent=""; }, 1500);
+}
+
+function visibleListings(){
+  let l;
+  if(tab==="all") l=LISTINGS.slice();
+  else if(tab==="new") l=LISTINGS.filter(x => statusOf(x.id)==="new");
+  else l=LISTINGS.filter(x => statusOf(x.id)===tab);
+  l=applyFilters(l);
+  return sortListings(l);
+}
+function populateStreetFilter(){
+  const sel=document.getElementById("f-street"); if(!sel) return;
+  const streets=[...new Set(LISTINGS.map(l=>l.street).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"sk"));
+  sel.innerHTML='<option value="">Any street</option>'+streets.map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join("");
+  sel.value=filters.street||"";
+}
+const FMAP={"f-text":"text","f-street":"street","f-minprice":"minprice","f-maxprice":"maxprice","f-maxm2":"maxm2","f-minarea":"minarea","f-maxarea":"maxarea","f-minfloor":"minfloor","f-maxfloor":"maxfloor","f-lift":"lift","f-ac":"ac"};
+function syncFilterInputs(){
+  Object.entries(FMAP).forEach(([id,k])=>{ const e=document.getElementById(id); if(e) e.value=filters[k]||""; });
+  const d=document.getElementById("f-deal"); if(d) d.checked=!!filters.deal;
+}
+function loadPresets(){ try{ return JSON.parse(localStorage.getItem("garsonka_presets"))||{}; }catch(e){ return {}; } }
+function savePresets(p){ localStorage.setItem("garsonka_presets", JSON.stringify(p)); }
+function refreshPresetSelect(){ const sel=document.getElementById("f-preset"); const p=loadPresets();
+  sel.innerHTML='<option value="">⭐ Presets…</option>'+Object.keys(p).map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join(""); }
+function wireFilters(){
+  Object.entries(FMAP).forEach(([id,key])=>{ const el=document.getElementById(id); if(!el) return;
+    el.value=filters[key]||""; const ev=(el.tagName==="SELECT")?"change":"input";
+    el.addEventListener(ev,()=>{ filters[key]=el.value; saveFilters(); render(); }); });
+  const deal=document.getElementById("f-deal"); deal.checked=!!filters.deal;
+  deal.addEventListener("change",()=>{ filters.deal=deal.checked; saveFilters(); render(); });
+  document.getElementById("f-clear").addEventListener("click",()=>{ filters={}; saveFilters(); syncFilterInputs(); render(); });
+  // presets
+  refreshPresetSelect();
+  document.getElementById("f-preset").addEventListener("change",e=>{ const p=loadPresets(); const n=e.target.value;
+    if(n && p[n]){ filters=Object.assign({}, p[n]); saveFilters(); syncFilterInputs(); render(); } });
+  document.getElementById("f-save").addEventListener("click",()=>{ const n=(prompt("Name this filter preset:")||"").trim();
+    if(!n) return; const p=loadPresets(); p[n]=Object.assign({}, filters); savePresets(p); refreshPresetSelect(); document.getElementById("f-preset").value=n; });
+  document.getElementById("f-delpreset").addEventListener("click",()=>{ const sel=document.getElementById("f-preset"); const n=sel.value;
+    if(!n){ alert("Pick a preset to delete first."); return; } if(!confirm("Delete preset \""+n+"\"?")) return;
+    const p=loadPresets(); delete p[n]; savePresets(p); refreshPresetSelect(); });
+}
+
+function render(){
+  buildStats();
+  // counts
+  let cAll=LISTINGS.length, cNew=0, cS=0, cR=0;
+  LISTINGS.forEach(l=>{ const s=statusOf(l.id); if(s==="saved")cS++; else if(s==="rejected")cR++; else cNew++; });
+  document.getElementById("c-new").textContent=cNew;
+  document.getElementById("c-all").textContent=cAll;
+  document.getElementById("c-saved").textContent=cS;
+  document.getElementById("c-rejected").textContent=cR;
+  document.querySelectorAll(".navbtn").forEach(b=>b.classList.toggle("active", b.dataset.tab===tab));
+  document.querySelectorAll(".mobnav-btn").forEach(b=>b.classList.toggle("active", b.dataset.tab===tab));
+  ({"m-c-new":cNew,"m-c-saved":cS,"m-c-rejected":cR,"m-c-all":cAll}) &&
+    Object.entries({"m-c-new":cNew,"m-c-saved":cS,"m-c-rejected":cR,"m-c-all":cAll}).forEach(([id,v])=>{
+      const el=document.getElementById(id); if(el){ el.textContent=v; el.style.display=v?"":"none"; } });
+  syncArchive();
+  const _ac=document.getElementById("c-archive"); if(_ac) _ac.textContent=Object.keys(loadArchive()).length;
+  const _special=(tab==="stats"||tab==="archive"||tab==="profile");
+  [document.querySelector(".filters"),document.querySelector(".presetbar"),document.getElementById("resultcount"),document.getElementById("sortsel"),document.querySelector(".mobfilter-toggle")].forEach(e=>{ if(e) e.style.display=_special?"none":""; });
+  if(_special){
+    document.getElementById("tab-title").textContent = tab==="stats" ? "📊 Statistics" : (tab==="archive" ? "🗄 Archive" : "👤 Profile");
+    document.getElementById("tab-sub").textContent="";
+    const feed=document.getElementById("feed");
+    if(tab==="stats") renderStats(feed); else if(tab==="archive") renderArchive(feed); else renderProfile(feed);
+    renderMap(LISTINGS); updateLearn(); return;
+  }
+  const titles={new:"New to review",all:"All listings",saved:"Saved",rejected:"Rejected"};
+  document.getElementById("tab-title").textContent=titles[tab];
+  const list = visibleListings();
+  const sortLabel={price:"price",date:"newest first",m2:"€/m²"}[sortBy]||"price";
+  const tabTotal={new:cNew,saved:cS,rejected:cR,all:cAll}[tab];
+  document.getElementById("tab-sub").textContent=`${list.length} shown${list.length!==tabTotal?" of "+tabTotal+" (filtered)":""} · sorted by ${sortLabel}`;
+  const fActive = Object.values(filters).some(v=>v!==""&&v!=null&&v!==false);
+  document.getElementById("resultcount").innerHTML =
+    `<b>${list.length}</b> listing${list.length===1?"":"s"} found`
+    + (fActive ? ` matching your filters (of ${tabTotal} in ${{new:"New to review",saved:"Saved",rejected:"Rejected",all:"All"}[tab]})` : "");
+  const feed=document.getElementById("feed");
+  if(list.length===0){
+    const msg = tab==="new" ? "All caught up — nothing new to review. 🎉"
+             : tab==="saved" ? "Nothing saved yet. Hit ♥ Save on listings you like."
+             : tab==="rejected" ? "Nothing rejected yet. Hit ✕ Reject and add a reason."
+             : "No listings.";
+    feed.innerHTML=`<div class="empty-feed">${msg}</div>`;
+  } else {
+    feed.innerHTML=list.map(card).join("");
+  }
+  renderMap(list);
+  updateLearn();
+}
+
+let _map=null, _markers=[];
+function renderMap(list){
+  list = list || visibleListings();
+  if(!_map){
+    _map=L.map('mapview');
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap contributors'}).addTo(_map);
+    L.polygon(ISO_POLY,{color:'#006aff',weight:2,fillColor:'#006aff',fillOpacity:0.08}).addTo(_map);
+    L.marker(ORIGIN).addTo(_map).bindPopup('<b>Jakubovo námestie 9</b>');
+    _map.fitBounds(L.polygon(ISO_POLY).getBounds(),{padding:[20,20]});
+  }
+  _markers.forEach(m=>_map.removeLayer(m)); _markers=[];
+  const colors={new:'#006aff',saved:'#1a8a4c',rejected:'#d12d2d'};
+  list.forEach(l=>{
+    const c=coordOf(l); if(!c) return;
+    const st=statusOf(l.id);
+    const mk=L.circleMarker(c,{radius:7,color:'#fff',weight:2,fillColor:colors[st]||colors.new,fillOpacity:0.95}).addTo(_map);
+    const img=PHOTO_BASE+esc(l.id)+'.webp';
+    const lm=landmarkOf(l);
+    mk.bindPopup('<div class="pin-pop"><b>'+esc(l.title)+'</b>'+
+      '<img src="'+img+'" onerror="this.style.display=\'none\'">'+
+      '<span class="pp-price">'+esc(l.price)+' €/mo</span> · '+esc(l.area)+' m² · '+(l.floor?esc(l.floor):'—')+' · '+(l.lift?'lift':'no lift')+'<br>'+
+      '📍 '+esc(l.street||'')+(lm?' · near '+esc(lm.label):'')+'<br><a href="'+esc(l.url)+'" target="_blank" rel="noopener">Open listing ↗</a></div>');
+    _markers.push(mk);
+  });
+  setTimeout(()=>_map.invalidateSize(),60);
+}
+
+const STOP=new Set("the a an and or to of in on is it too very i its with no not for from byt this that".split(" "));
+function updateLearn(){
+  const words={};
+  LISTINGS.forEach(l=>{
+    if(statusOf(l.id)==="rejected"){
+      reasonOf(l.id).toLowerCase().split(/[^a-zà-ž0-9áäčďéíľĺňóôŕšťúýž]+/i).forEach(w=>{
+        if(w.length>2 && !STOP.has(w)) words[w]=(words[w]||0)+1;
+      });
+    }
+  });
+  const top=Object.entries(words).sort((a,b)=>b[1]-a[1]).slice(0,12);
+  const box=document.getElementById("learn-tags"); if(!box) return;
+  if(top.length===0){ box.innerHTML='<span class="empty">Reject a few with reasons and patterns show up here.</span>'; return; }
+  box.innerHTML=top.map(([w,n])=>`<span class="tag">${esc(w)}${n>1?" ·"+n:""}</span>`).join("");
+}
+
+/* ===== Statistics + Archive pages ===== */
+const NEW_PROJECTS=["skypark","sky park","metropolis","panorama","eurovea"];
+function isNewFlat(l){ const t=fold((l.title||"")+" "+(l.address||"")); return NEW_PROJECTS.some(p=>t.indexOf(p)>=0); }
+function _avg(a){ return a.length? a.reduce((x,y)=>x+y,0)/a.length : null; }
+function r1(v){ return (v==null||!isFinite(v))?null:Math.round(v*10)/10; }
+function pct(a,b){ return b? Math.round(a/b*100)+"%" : "0%"; }
+function computeStats(){
+  const L=LISTINGS, m2=[],sizes=[],totals=[],utils=[]; let ac=0,nac=0; const sc={};
+  L.forEach(l=>{ const mm=perM2(l); if(mm!=null&&isFinite(mm)) m2.push(mm);
+    const a=+l.area; if(a) sizes.push(a); totals.push(totalPrice(l));
+    if(l.hasAc) ac++; else nac++;
+    if(!l.energiesIncluded && l.energie!=null && l.energie!=="") utils.push(+l.energie||0);
+    const s=(l.street||"").split(",")[0].trim()||"—"; sc[s]=(sc[s]||0)+1; });
+  const grp=pred=>{ const g=L.filter(pred); const gm=g.map(perM2).filter(x=>x!=null&&isFinite(x)); return {n:g.length, price:_avg(g.map(totalPrice)), m2:_avg(gm)}; };
+  return { n:L.length, avgM2:_avg(m2), minM2:m2.length?Math.min.apply(0,m2):null, maxM2:m2.length?Math.max.apply(0,m2):null,
+    avgSize:_avg(sizes), avgTotal:_avg(totals), avgUtil:_avg(utils), utilN:utils.length, ac, nac,
+    topStreets:Object.entries(sc).sort((a,b)=>b[1]-a[1]).slice(0,8),
+    oldG:grp(l=>!isNewFlat(l)), newG:grp(l=>isNewFlat(l)) };
+}
+function pieSVG(parts){
+  const total=parts.reduce((s,p)=>s+p.value,0); if(total<=0) return '<div class="muted">No data</div>';
+  const cx=70,cy=70,r=58; let a0=-Math.PI/2,out=""; const full=parts.find(p=>p.value===total);
+  if(full){ out='<circle cx="70" cy="70" r="58" fill="'+full.color+'"/>'; }
+  else parts.forEach(p=>{ if(!p.value) return; const f=p.value/total,a1=a0+f*2*Math.PI,lg=f>0.5?1:0;
+    const x0=cx+r*Math.cos(a0),y0=cy+r*Math.sin(a0),x1=cx+r*Math.cos(a1),y1=cy+r*Math.sin(a1);
+    out+='<path d="M70,70 L'+x0.toFixed(1)+','+y0.toFixed(1)+' A58,58 0 '+lg+' 1 '+x1.toFixed(1)+','+y1.toFixed(1)+' Z" fill="'+p.color+'"/>'; a0=a1; });
+  return '<svg viewBox="0 0 140 140" width="148" height="148">'+out+'</svg>';
+}
+function trendSVG(rows, metric){
+  const dates=[...new Set(rows.map(r=>r.snap_date))].sort();
+  const valOf=r=> metric==="price"? r.avg_price : r.avg_m2;
+  const groups=[["old","#8a8f98"],["new","#006aff"]];
+  const series=groups.map(([g,c])=>({g,c,pts:dates.map(d=>{const r=rows.find(x=>x.snap_date===d&&x.grp===g); return r&&valOf(r)!=null? +valOf(r):null;})}));
+  const all=series.flatMap(s=>s.pts).filter(v=>v!=null);
+  if(all.length<1) return '<div class="muted">No snapshots yet — this fills in over the next days.</div>';
+  if(dates.length<2) return '<div class="muted">First snapshot saved for '+dates[0]+'. The trend line appears once there are at least two days of data.</div>';
+  const mn=Math.min.apply(0,all),mx=Math.max.apply(0,all),pad=(mx-mn)*0.12||1,lo=mn-pad,hi=mx+pad;
+  const W=580,H=220,LF=46,RF=14,TF=14,BF=30,iw=W-LF-RF,ih=H-TF-BF;
+  const X=i=>LF+iw*i/(dates.length-1), Y=v=>TF+ih-(v-lo)/(hi-lo)*ih;
+  let g='<line x1="'+LF+'" y1="'+TF+'" x2="'+LF+'" y2="'+(TF+ih)+'" stroke="#e6e8ec"/><line x1="'+LF+'" y1="'+(TF+ih)+'" x2="'+(W-RF)+'" y2="'+(TF+ih)+'" stroke="#e6e8ec"/>';
+  [lo,(lo+hi)/2,hi].forEach(v=>{const yy=Y(v); g+='<line x1="'+LF+'" y1="'+yy.toFixed(1)+'" x2="'+(W-RF)+'" y2="'+yy.toFixed(1)+'" stroke="#f1f2f4"/><text class="ax" x="'+(LF-6)+'" y="'+(yy+3).toFixed(1)+'" text-anchor="end">'+v.toFixed(0)+'</text>';});
+  g+='<text class="ax" x="'+X(0)+'" y="'+(TF+ih+18)+'" text-anchor="middle">'+dates[0]+'</text><text class="ax" x="'+X(dates.length-1)+'" y="'+(TF+ih+18)+'" text-anchor="middle">'+dates[dates.length-1]+'</text>';
+  series.forEach(s=>{ const pts=s.pts.map((v,i)=>v==null?null:[X(i),Y(v)]).filter(Boolean);
+    if(pts.length>1) g+='<polyline fill="none" stroke="'+s.c+'" stroke-width="2" points="'+pts.map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join(" ")+'"/>';
+    pts.forEach(p=>g+='<circle cx="'+p[0].toFixed(1)+'" cy="'+p[1].toFixed(1)+'" r="3" fill="'+s.c+'"/>'); });
+  return '<svg viewBox="0 0 '+W+' '+H+'" width="100%" class="trend">'+g+'</svg>';
+}
+/* ===== Profile / login (mobile bottom-bar tab) ===== */
+function profileLogin(){
+  const pw=(document.getElementById('pf-pw')||{}).value||'';
+  if(_sha256(_utf8(pw))===EDIT_PW_HASH){
+    editUntil=Date.now()+60*60*1000; scheduleLock(); updateEditUI(); render();
+  } else {
+    const e=document.getElementById('pf-msg'); if(e){ e.textContent='Wrong password — still in view-only mode.'; e.style.color='var(--reject)'; }
+  }
+}
+function profileLogout(){ editUntil=0; clearTimeout(_lockTimer); updateEditUI(); render(); }
+function renderProfile(feed){
+  const on=canEdit();
+  let h='<div class="stats-wrap" style="max-width:420px"><div class="stat-card"><h3>👤 Profile</h3>';
+  if(on){
+    h+='<p class="stat-sub">You\'re logged in — editing is enabled (save, reject, reasons).</p>';
+    h+='<button class="btn btn-undo" style="width:100%;padding:12px;margin-top:6px" onclick="profileLogout()">Log out</button>';
+  } else {
+    h+='<p class="stat-sub">Log in to enable editing. The tracker is view-only until you do.</p>';
+    h+='<label class="pf-l">Username</label><input id="pf-user" class="pf-in" placeholder="Username" autocomplete="username">';
+    h+='<label class="pf-l">Password</label><input id="pf-pw" class="pf-in" type="password" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key===\'Enter\')profileLogin()">';
+    h+='<button class="btn btn-save" style="width:100%;padding:12px;margin-top:12px" onclick="profileLogin()">Log in</button>';
+    h+='<div id="pf-msg" class="stat-sub" style="margin-top:8px"></div>';
+  }
+  h+='</div></div>';
+  feed.innerHTML=h;
+}
+function renderStats(feed){
+  const s=computeStats();
+  const eur=v=>v==null?"—":Math.round(v)+" €";
+  const m2v=v=>v==null?"—":(Math.round(v*10)/10).toString().replace(".",",")+" €/m²";
+  const nm=v=>v==null?"—":(Math.round(v*10)/10).toString().replace(".",",");
+  const stat=(l,v,sub)=>'<div class="stat"><div class="sv">'+v+'</div><div class="sl">'+l+'</div>'+(sub?'<div class="ss">'+sub+'</div>':'')+'</div>';
+  let h='<div class="stats-wrap"><div class="arch-head"><div class="stat-sub">Across all '+s.n+' flats tracked in your 15-min area.</div><button class="pb-btn" onclick="tab=\'archive\';render();window.scrollTo({top:0});">🗄 Open Archive</button></div><div class="stat-grid">';
+  h+=stat("Avg €/m² (total price)", m2v(s.avgM2), "low "+m2v(s.minM2)+" · high "+m2v(s.maxM2));
+  h+=stat("Avg total price / flat", eur(s.avgTotal));
+  h+=stat("Avg size", nm(s.avgSize)+" m²");
+  h+=stat("Avg utilities / flat", eur(s.avgUtil), s.utilN+" flats bill separately");
+  h+='</div>';
+  const C1="#006aff",C0="#dfe3ea";
+  h+='<div class="stat-card"><h3>Air conditioning</h3><div class="pie-row">'+pieSVG([{value:s.ac,color:C1},{value:s.nac,color:C0}])+'<div class="legend"><div><span class="dot" style="background:'+C1+'"></span> A/C — '+s.ac+' ('+pct(s.ac,s.ac+s.nac)+')</div><div><span class="dot" style="background:'+C0+'"></span> No A/C — '+s.nac+' ('+pct(s.nac,s.ac+s.nac)+')</div></div></div></div>';
+  h+='<div class="stat-card"><h3>Top streets — most flats</h3><div class="bars">';
+  const mc=s.topStreets.length?s.topStreets[0][1]:1;
+  s.topStreets.forEach(function(e){ h+='<div class="bar-row"><span class="bn">'+esc(e[0])+'</span><span class="bb"><span class="bf" style="width:'+Math.round(e[1]/mc*100)+'%"></span></span><span class="bc">'+e[1]+'</span></div>'; });
+  h+='</div></div>';
+  h+='<div class="stat-card"><h3>Old vs new-build</h3><div class="stat-sub">New = Sky Park, Metropolis, Panorama, Eurovea. Everything else counts as old.</div><table class="ovn"><tr><th></th><th>Flats</th><th>Avg total</th><th>Avg €/m²</th></tr><tr><td>Old</td><td>'+s.oldG.n+'</td><td>'+eur(s.oldG.price)+'</td><td>'+m2v(s.oldG.m2)+'</td></tr><tr><td>New-build</td><td>'+s.newG.n+'</td><td>'+eur(s.newG.price)+'</td><td>'+m2v(s.newG.m2)+'</td></tr></table></div>';
+  h+='<div class="stat-card"><h3>Price trend over time</h3><div class="stat-sub">Avg €/m² per day — old vs new-build.</div><div id="trend-box"><div class="muted">Loading…</div></div><div class="legend" style="flex-direction:row;gap:16px;margin-top:8px"><div><span class="dot" style="background:#8a8f98"></span> Old</div><div><span class="dot" style="background:#006aff"></span> New-build</div></div></div>';
+  h+='</div>';
+  feed.innerHTML=h;
+  const done=window._snapDone?Promise.resolve():(window._snapDone=true, snapshotToday().catch(()=>{}));
+  done.then(()=>loadSnapshots()).then(rows=>{ const el=document.getElementById("trend-box"); if(el) el.innerHTML=trendSVG(rows||[],"m2"); })
+    .catch(()=>{ const el=document.getElementById("trend-box"); if(el) el.innerHTML='<div class="muted">History needs a one-time setup: run <b>stats_setup.sql</b> in Supabase, then a point is recorded each day.</div>'; });
+}
+async function snapshotToday(){
+  if(!sb) throw new Error("no sb");
+  const s=computeStats(), today=new Date().toISOString().slice(0,10);
+  const rows=[{snap_date:today,grp:"all",avg_price:r1(s.avgTotal),avg_m2:r1(s.avgM2),avg_size:r1(s.avgSize),n:s.n},
+    {snap_date:today,grp:"old",avg_price:r1(s.oldG.price),avg_m2:r1(s.oldG.m2),avg_size:null,n:s.oldG.n},
+    {snap_date:today,grp:"new",avg_price:r1(s.newG.price),avg_m2:r1(s.newG.m2),avg_size:null,n:s.newG.n}];
+  const { error }=await sb.from("stats_snapshots").upsert(rows,{onConflict:"snap_date,grp"});
+  if(error) throw error;
+}
+async function loadSnapshots(){ if(!sb) return []; const { data, error }=await sb.from("stats_snapshots").select("*").order("snap_date",{ascending:true}); if(error) throw error; return data||[]; }
+/* ----- Archive ----- */
+function loadArchive(){ try{ return JSON.parse(localStorage.getItem("garsonka_archive"))||{}; }catch(e){ return {}; } }
+function saveArchiveStore(a){ localStorage.setItem("garsonka_archive", JSON.stringify(a)); }
+function syncArchive(){
+  const a=loadArchive(); let ch=false; const today=new Date().toISOString().slice(0,10);
+  LISTINGS.forEach(l=>{ if(statusOf(l.id)==="saved" && !a[l.id]){ a[l.id]={id:l.id,title:l.title,street:l.street,address:l.address,price:l.price,total:totalPrice(l),area:l.area,pricePerM2:r1(perM2(l)),floor:l.floor,lift:!!l.lift,hasAc:!!l.hasAc,url:l.url,image:PHOTO_BASE+l.id+".webp",archivedAt:today}; ch=true; } });
+  if(ch) saveArchiveStore(a); return a;
+}
+function renderArchive(feed){
+  const items=Object.values(syncArchive()).sort((x,y)=>(x.total||0)-(y.total||0));
+  let h='<div class="stats-wrap"><div class="arch-head"><div class="stat-sub">'+items.length+' saved flat'+(items.length===1?"":"s")+' archived — kept even if they leave the market.</div><div class="arch-btns"><button class="pb-btn" onclick="exportArchive(\'csv\')">⬇ Export CSV</button><button class="pb-btn" onclick="exportArchive(\'json\')">⬇ Export JSON</button></div></div>';
+  if(!items.length){ feed.innerHTML=h+'<div class="empty-feed">Nothing archived yet. Save a flat (♥) and it is preserved here.</div></div>'; return; }
+  h+='<div class="arch-grid">';
+  items.forEach(function(l){ h+='<div class="arch-card"><div class="ac-img" style="background-image:url(\''+esc(l.image)+'\')"></div><div class="ac-body"><div class="ac-price">'+(l.total||l.price)+' €/mo</div><div class="ac-t"><a href="'+esc(l.url)+'" target="_blank" rel="noopener">'+esc(l.title||"")+'</a></div><div class="ac-meta">📍 '+esc(l.street||"")+' · '+esc(l.area||"?")+' m² · '+(l.pricePerM2!=null?esc((""+l.pricePerM2).replace(".",","))+" €/m²":"—")+'</div><div class="ac-when">saved '+esc(l.archivedAt||"")+'</div></div></div>'; });
+  feed.innerHTML=h+'</div></div>';
+}
+function exportArchive(fmt){
+  const items=Object.values(loadArchive()); let blob,name;
+  if(fmt==="json"){ blob=new Blob([JSON.stringify(items,null,2)],{type:"application/json"}); name="garsonka-saved.json"; }
+  else { const cols=["id","title","street","address","total","price","area","pricePerM2","floor","lift","hasAc","url","archivedAt"];
+    const q=v=>{ v=(v==null?"":String(v)); return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; };
+    const csv=[cols.join(",")].concat(items.map(o=>cols.map(c=>q(o[c])).join(","))).join("\n");
+    blob=new Blob([csv],{type:"text/csv;charset=utf-8"}); name="garsonka-saved.csv"; }
+  const u=URL.createObjectURL(blob),a=document.createElement("a"); a.href=u; a.download=name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(u),1500);
+}
+
+document.querySelectorAll(".navbtn").forEach(b=>{
+  b.addEventListener("click",()=>{ tab=b.dataset.tab; render(); window.scrollTo({top:0,behavior:"smooth"}); });
+});
+/* Mobile bottom tab bar — same tabs, thumb-friendly */
+document.querySelectorAll(".mobnav-btn").forEach(b=>{
+  b.addEventListener("click",()=>{ tab=b.dataset.tab; render(); window.scrollTo({top:0,behavior:"smooth"}); });
+});
+const _sortsel=document.getElementById("sortsel"); _sortsel.value=sortBy;
+_sortsel.addEventListener("change",e=>{ sortBy=e.target.value; localStorage.setItem("garsonka_sort",sortBy); render(); });
+const _resetEl=document.getElementById("reset"); if(_resetEl) _resetEl.addEventListener("click",async ()=>{
+  if(!canEdit() && !unlock()) return;
+  if(confirm("Clear all saved/rejected and reasons?")){
+    const ids=Object.keys(state); state={}; saveState(); render();
+    if(sb){ try{ await sb.from("apartments").update({status:"new", reason:""}).in("id", ids.length?ids:["__none__"]); }catch(e){ console.error(e); } }
+  }
+});
+init();
+</script>
+</body>
+</html>

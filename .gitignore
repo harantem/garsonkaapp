@@ -1,0 +1,50 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# Editors / IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Secrets & environment
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets.json
+
+# Supabase CLI local state
+supabase/.temp/
+supabase/.branches/
+supabase/logs/
+
+# Node (edge functions / tooling)
+node_modules/
+npm-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Deno (Supabase edge functions)
+deno.lock
+
+# Build / deploy output
+dist/
+build/
+.vercel/
+.netlify/
+
+# Logs & temp
+*.log
+tmp/
+.cache/
+
+# Listing photos (source of truth lives in Supabase storage)
+photos/

@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>15-min walk · Jakubovo námestie 9</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<style>
+  :root{--accent:#d6336c;--ink:#1d2433;--muted:#6b7280;--line:#e6e8ec}
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;color:var(--ink)}
+  .wrap{display:flex;height:100vh}
+  .side{width:300px;flex:0 0 300px;border-right:1px solid var(--line);display:flex;flex-direction:column}
+  .side h1{font-size:16px;margin:0;padding:16px 16px 4px}
+  .side .meta{padding:0 16px 10px;color:var(--muted);font-size:12px;line-height:1.5}
+  .side .search{margin:0 16px 10px;padding:8px 11px;border:1px solid var(--line);border-radius:9px;font:inherit}
+  .side .search:focus{outline:none;border-color:var(--accent)}
+  .list{overflow:auto;padding:0 8px 16px;flex:1}
+  .list .it{padding:6px 10px;border-radius:7px;font-size:13px;cursor:default}
+  .list .it:hover{background:#f4f5f7}
+  .list .it mark{background:#ffe3ee;color:inherit}
+  #map{flex:1}
+  .legend{background:#fff;padding:9px 11px;border-radius:9px;box-shadow:0 1px 4px rgba(0,0,0,.25);font-size:12px;line-height:1.6}
+  .sw{display:inline-block;width:13px;height:13px;border-radius:3px;vertical-align:-2px;margin-right:6px}
+  @media(max-width:760px){.wrap{flex-direction:column}.side{width:100%;flex:0 0 auto;height:42vh;border-right:none;border-bottom:1px solid var(--line)}#map{height:58vh}}
+</style></head>
+<body>
+<div class="wrap">
+  <aside class="side">
+    <h1>15-minute walk</h1>
+    <div class="meta">from <b>Jakubovo námestie 9</b> · <b id="cnt"></b> streets within a real 15-min walk (inside your selected bounds).</div>
+    <input class="search" id="q" placeholder="Filter streets…">
+    <div class="list" id="list"></div>
+  </aside>
+  <div id="map"></div>
+</div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const ORIGIN=[48.1436, 17.1201];
+const ISO=[[48.15341, 17.1261], [48.15236, 17.1231], [48.15263, 17.12207], [48.15196, 17.1211], [48.15308, 17.1181], [48.15065, 17.1151], [48.15083, 17.11387], [48.15009, 17.11061], [48.14864, 17.10906], [48.14836, 17.10834], [48.1476, 17.10801], [48.1466, 17.10668], [48.1456, 17.10658], [48.1446, 17.10723], [48.14337, 17.10733], [48.1396, 17.10622], [48.13922, 17.10672], [48.1389, 17.1084], [48.13868, 17.11618], [48.13744, 17.11626], [48.13706, 17.1161], [48.13668, 17.11502], [48.1356, 17.11491], [48.1346, 17.11522], [48.13425, 17.11675], [48.13384, 17.1171], [48.13513, 17.11757], [48.1356, 17.11895], [48.13744, 17.11794], [48.13873, 17.1181], [48.13873, 17.12523], [48.13809, 17.1261], [48.13783, 17.12733], [48.13656, 17.1281], [48.13806, 17.1291], [48.13829, 17.13141], [48.1396, 17.13327], [48.14034, 17.13184], [48.14077, 17.13193], [48.14101, 17.1341], [48.14171, 17.13599], [48.1426, 17.13617], [48.14334, 17.13484], [48.1446, 17.13386], [48.1456, 17.13514], [48.1466, 17.13461], [48.15341, 17.1261]];
+const STREETS=["29. augusta", "Alešova", "Alžbetínska", "Americké námestie", "Azovská", "Bazová", "Bezručova", "Biela", "Blumentálska", "Bottova", "Budovateľská", "Cintorínska", "Cukrová", "Čulenova", "Dobrovičova", "Dobrovského", "Dostojevského rad", "Drevená", "Dunajská", "Fajnorovo nábrežie", "Fazuľová", "Ferienčíkova", "Floriánske námestie", "Francisciho", "Františkánska", "Františkánske námestie", "Gajova", "Gondova", "Gorkého", "Grösslingová", "Hamuliakova", "Heydukova", "Hlavné námestie", "Hodžovo námestie", "Hollého", "Hurbanovo námestie", "Hviezdoslavovo námestie", "Chalupkova", "Chorvátska", "Imricha Karvaša", "Jakubovo námestie", "Janáčkova", "Jedlíkova", "Jesenského", "Justičná", "Kamenné námestie", "Kapucínska", "Karadžičova", "Klemensova", "Klobučnícka", "Koceľova", "Kolárska", "Kollárovo námestie", "Komenského námestie", "Kostolná", "Košická", "Krupkova", "Kulíškova", "Kúpeľná", "Landererova", "Laurinská", "Lazaretská", "Lodná", "Lomonosovova", "Lužická", "Májkova", "Malý trh", "Mariánska", "Medená", "Mickiewiczova", "Michalská", "Mlynské nivy", "Moskovská", "Most Apollo", "Mostová", "Múzejná", "Nádvorie Starej radnice", "Námestie 1. mája", "Námestie Eugena Suchoňa", "Námestie Ľudovíta Štúra", "Námestie SNP", "Nedbalova", "Obchodná", "Odborárske námestie", "Olejkárska", "Palackého", "Panská", "Páričkova", "Paulínyho", "Pavlovova", "Plátennícka", "Poľná", "Poľská", "Poštová", "Prešernova", "Pribinova", "Primaciálne námestie", "Prístavná", "Radlinského", "Radničná", "Rajská", "Rázusovo nábrežie", "Revúcka", "Riečna", "Rigeleho", "Rybárska brána", "Sasinkova", "Satinského", "Sedlárska", "Sienkiewiczova", "Strakova", "Strážnická", "Suché mýto", "Súťažná", "Svätoplukova", "Šafárikovo námestie", "Šagátová", "Školská", "Šoltésovej", "Špitálska", "Štúrova", "Tallerova", "Tekovská", "Tobrucká", "Továrenská", "Treskoňova", "Uršulínska", "Vajanského nábrežie", "Valchárska", "Velehradská", "Veterná", "Vysoká", "Záhradnícka", "Zámočnícka", "Zelená", "Živnostenská"];
+document.getElementById('cnt').textContent=STREETS.length;
+const map=L.map('map');
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap contributors'}).addTo(map);
+const poly=L.polygon(ISO,{color:'#d6336c',weight:2,fillColor:'#d6336c',fillOpacity:0.18}).addTo(map);
+L.marker(ORIGIN).addTo(map).bindPopup('<b>Jakubovo námestie 9</b>').openPopup();
+map.fitBounds(poly.getBounds(),{padding:[24,24]});
+const legend=L.control({position:'bottomleft'});
+legend.onAdd=function(){const d=L.DomUtil.create('div','legend');
+ d.innerHTML='<span class="sw" style="background:#d6336c;opacity:.5"></span>15-min walk ('+STREETS.length+' streets)';
+ return d;};
+legend.addTo(map);
+const listEl=document.getElementById('list');
+function esc(s){return s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
+function draw(filter){const f=(filter||'').toLowerCase();
+  listEl.innerHTML=STREETS.filter(s=>s.toLowerCase().includes(f)).map(s=>{
+    let label=esc(s);
+    if(f){const i=s.toLowerCase().indexOf(f);label=esc(s.slice(0,i))+'<mark>'+esc(s.slice(i,i+f.length))+'</mark>'+esc(s.slice(i+f.length));}
+    return '<div class="it">'+label+'</div>';}).join('');}
+draw('');
+document.getElementById('q').addEventListener('input',e=>draw(e.target.value));
+</script>
+</body></html>
