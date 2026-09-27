@@ -735,7 +735,9 @@ function cardMapSrc(l){ const lm=landmarkOf(l); return lm
 function card(l){
   const st = statusOf(l.id);
   const sale = dealOf(l)==="sale";
+  const liftHtml = l.lift ? '<span class="v yes">Yes ✓</span>' : '<span class="v no">No ✕</span>';
   const acHtml = l.hasAc ? '<span class="v yes">Yes ✓</span>' : '<span class="v no">No</span>';
+  const floor = l.floor ? esc(l.floor) : "—";
   const total = totalPrice(l);
   const deposit = (l.deposit!=null && l.deposit!=='') ? esc(l.deposit)+" €" : "not stated";
   const rk = (l.rkFee!=null && l.rkFee!=='') ? esc(l.rkFee) : "not stated";
@@ -765,10 +767,14 @@ function card(l){
         <div class="fact"><span class="k">Asking price</span><span class="v big">${hasPrice(l)?fmtEur(total):"Cena dohodou"}</span></div>
         <div class="fact"><span class="k">Type</span><span class="v">${esc(l.rooms||"—")}</span></div>
         <div class="fact"><span class="k">Size · €/m²</span><span class="v">${esc(l.area)} m² · ${fmtM2(l)}</span></div>
-        <div class="fact"><span class="k">Building</span><span class="v">${esc(l.buildType||"—")}</span></div>` : `
+        <div class="fact"><span class="k">Floor</span><span class="v">${floor}</span></div>
+        <div class="fact"><span class="k">Building</span><span class="v">${esc(l.buildType||"—")}</span></div>
+        <div class="fact"><span class="k">Lift</span>${liftHtml}</div>` : `
         <div class="fact"><span class="k">Total price</span><span class="v big">${hasPrice(l)?total+" €/mo":"Cena dohodou"}</span></div>
         <div class="fact"><span class="k">Rent + utilities</span><span class="v">${esc(l.price)} € · ${utilLabel(l)}</span></div>
         <div class="fact"><span class="k">Size · €/m² (total)</span><span class="v">${esc(l.area)} m² · ${fmtM2(l)}</span></div>
+        <div class="fact"><span class="k">Floor</span><span class="v">${floor}</span></div>
+        <div class="fact"><span class="k">Lift</span>${liftHtml}</div>
         <div class="fact"><span class="k">Air conditioning</span>${acHtml}</div>`}
       </div>
       ${benchChip(l)}
