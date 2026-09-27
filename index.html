@@ -333,6 +333,9 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<!-- Local scrape, written by scrape.py into out/data.js. A missing file is fine:
+     window.SCRAPED stays undefined and the page falls back to Supabase. -->
+<script src="out/data.js"></script>
 <script>
 /* ===== Supabase config — paste your two values between the quotes ===== */
 const SUPABASE_URL      = "https://nfqmwccfeahkpuznkbla.supabase.co";
@@ -497,8 +500,8 @@ function applyFilters(list){
     if(f.text){ const hay=((l.title||"")+" "+(l.street||"")+" "+(l.address||"")+" "+(l.buildType||"")+" "+(l.rooms||"")).toLowerCase();
       if(!f.text.toLowerCase().split(/\s+/).every(w=>hay.includes(w))) return false; }
     if(f.street && fold(l.street)!==fold(f.street)) return false;
-    if(f.minprice && totalPrice(l) < +f.minprice) return false;
-    if(f.maxprice && totalPrice(l) > +f.maxprice) return false;
+    if(f.minprice && hasPrice(l) && totalPrice(l) < +f.minprice) return false;
+    if(f.maxprice && hasPrice(l) && totalPrice(l) > +f.maxprice) return false;
     if(f.maxm2){ const m=perM2(l); if(m!=null && m > +f.maxm2) return false; }
     if(f.minarea && (+l.area||0) < +f.minarea) return false;
     if(f.maxarea && (+l.area||1e9) > +f.maxarea) return false;
@@ -565,6 +568,21 @@ function normalizeRow(r){
 function dealOf(l){ const c=CATEGORIES[l.category||"garsonka"]; return c ? c.deal : "rent"; }
 function nfmt(v){ return String(Math.round(v)).replace(/\B(?=(\d{3})+(?!\d))/g,"\u00a0"); }
 function fmtEur(v){ return (v==null||!isFinite(v)) ? "—" : nfmt(v)+" €"; }
+/* "Cena dohodou" — no usable price. Deliberately kept apart from a real number:
+   as a 0 it sorted to the very top, rendered as "0 €", scored 100% below every
+   benchmark, and dragged the medians down with it.
+
+   The floor catches agents who type a placeholder instead of leaving the field
+   empty — a 1 € "asking price" on a 70 m² flat behaves exactly like a missing
+   one. Set per deal type, well under any genuine listing in either category. */
+const PRICE_FLOOR = { sale: 1000, rent: 50 };
+function hasPrice(l){
+  const p = +l.price;
+  if(l.price==null || l.price==='' || !isFinite(p)) return false;
+  return p >= (PRICE_FLOOR[dealOf(l)] ?? 0);
+}
+const PRICE_LAST = 1e15;                 // sentinel: sorts unpriced listings last
+function sortPrice(l){ return hasPrice(l) ? totalPrice(l) : PRICE_LAST; }
 function totalPrice(l){
   const p = +l.price||0;
   if(dealOf(l)==="sale") return p;     // a sale price is the whole price — no utilities on top
@@ -588,7 +606,7 @@ function daysAgo(d){
   return "listed "+Math.round(diff/30)+" months ago";
 }
 // ----- price/m² from TOTAL price, and benchmarking against the whole history -----
-function perM2(l){ const a=+l.area; if(!a) return null; return totalPrice(l)/a; }
+function perM2(l){ const a=+l.area; if(!a || !hasPrice(l)) return null; return totalPrice(l)/a; }
 function fmtM2(l){ const m=perM2(l); return m==null ? "—" : (Math.round(m*10)/10).toString().replace(".",",")+" €/m²"; }
 function median(arr){ if(!arr.length) return null; const s=[...arr].sort((a,b)=>a-b); const m=s.length>>1; return s.length%2 ? s[m] : (s[m-1]+s[m])/2; }
 let STATS=null;
@@ -623,29 +641,62 @@ function benchChip(l){
 }
 function sortListings(list){
   const a=[...list];
-  if(sortBy==="date") a.sort((x,y)=>{ const dx=x.scrapedAt||"", dy=y.scrapedAt||""; if(dx!==dy) return dy.localeCompare(dx); return totalPrice(x)-totalPrice(y); });
+  if(sortBy==="date") a.sort((x,y)=>{ const dx=x.scrapedAt||"", dy=y.scrapedAt||""; if(dx!==dy) return dy.localeCompare(dx); return sortPrice(x)-sortPrice(y); });
   else if(sortBy==="m2") a.sort((x,y)=>(perM2(x)??1e9)-(perM2(y)??1e9));
-  else a.sort((x,y)=>totalPrice(x)-totalPrice(y)); // price
+  else a.sort((x,y)=>sortPrice(x)-sortPrice(y)); // price
   return a;
 }
 function banner(txt, kind){ const el=document.getElementById("syncbar"); if(el){ el.textContent=txt; el.className="syncbar "+(kind||""); } }
 
+/* Rows from the last local scrape (out/data.js), flattened across categories and
+   shaped like a database row so they can go through normalizeRow unchanged.
+   `scraped_at` is per-file, not per-row, so it is stamped on here — sort-by-date
+   reads it. */
+function scrapedRows(){
+  if(!window.SCRAPED) return [];
+  const out = [];
+  Object.keys(CATEGORIES).forEach(c=>{
+    const blk = window.SCRAPED[c];
+    if(blk && blk.listings) blk.listings.forEach(r=>
+      out.push(Object.assign({}, r, {category:c, scraped_at:blk.scrapedAt})));
+  });
+  return out;
+}
+
 async function init(){
+  /* The local scrape wins over the table: it is the newer of the two by
+     definition, and seeing it is the whole point of running scrape.py. Supabase
+     is still read — for your saved/rejected decisions — and still written on
+     every status change. */
+  const local = scrapedRows();
+  if(local.length){
+    ALL_LISTINGS = local.map(normalizeRow);
+    banner(`📁 ${local.length} scraped ${window.SCRAPED.generatedAt||""} — from out/data.js, not the database`, "warn");
+  }
   if(sb){
-    banner("☁ connecting…");
+    if(!local.length) banner("☁ connecting…");
     try{
       const { data, error } = await sb.from("apartments").select("*").order("price",{ascending:true});
       if(error) throw error;
       if(data && data.length){
-        ALL_LISTINGS = data.map(normalizeRow);
         state = {};
         data.forEach(r=>{ state[r.id] = {status:r.status||"new", reason:r.reason||""}; });
-        banner("☁ synced with Supabase", "ok");
-      } else {
+        if(!local.length){
+          ALL_LISTINGS = data.map(normalizeRow);
+          banner("☁ synced with Supabase", "ok");
+        } else {
+          /* Decisions came from the table; listings the table has never seen
+             keep whatever this browser remembers. */
+          const saved = loadState();
+          local.forEach(r=>{ if(!state[r.id] && saved[r.id]) state[r.id] = saved[r.id]; });
+          const known = data.length, fresh = local.filter(r=>!data.some(d=>d.id===r.id)).length;
+          banner(`📁 ${local.length} scraped ${window.SCRAPED.generatedAt||""} · ${fresh} not yet in the table (${known} rows there) — run out/insert_*.sql`, "warn");
+        }
+      } else if(!local.length){
         banner("☁ connected — table is empty, run the seed SQL", "warn");
       }
-    }catch(e){ console.error(e); banner("⚠ Supabase error — using local copy", "warn"); }
-  } else {
+    }catch(e){ console.error(e); if(!local.length) banner("⚠ Supabase error — using local copy", "warn"); }
+  } else if(!local.length){
     banner("◌ local mode — saving to this browser only", "warn");
   }
   applyCategory();                      // scope to the active category (+ walkable filter where it applies)
@@ -705,7 +756,7 @@ function card(l){
       </a>
       <img src="${PHOTO_BASE}${esc(l.id)}.webp" alt=""
            onerror="if(!this.dataset.fb){this.dataset.fb='1';this.src='photos/${esc(l.id)}.webp';}else{this.style.display='none';}">
-      <span class="price">${sale?fmtEur(total):total+" €/mo"}<small>${sale?"asking price":"total"}</small></span>
+      <span class="price">${!hasPrice(l)?"Cena dohodou":(sale?fmtEur(total):total+" €/mo")}<small>${!hasPrice(l)?"price on request":(sale?"asking price":"total")}</small></span>
       <a class="ph-photos" href="${esc(l.url)}" target="_blank" rel="noopener">📷 See all photos ↗</a>
     </div>
     <div class="body">
@@ -713,13 +764,13 @@ function card(l){
       <div class="addr"><a class="addrlink" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent((l.address||l.street||"")+", Bratislava")}" target="_blank" rel="noopener">📍 ${esc(l.address)}</a> · <span class="added">${daysAgo(l.listedAt||l.scrapedAt)}</span></div>
       <div class="facts">
         ${sale ? `
-        <div class="fact"><span class="k">Asking price</span><span class="v big">${fmtEur(total)}</span></div>
+        <div class="fact"><span class="k">Asking price</span><span class="v big">${hasPrice(l)?fmtEur(total):"Cena dohodou"}</span></div>
         <div class="fact"><span class="k">Type</span><span class="v">${esc(l.rooms||"—")}</span></div>
         <div class="fact"><span class="k">Size · €/m²</span><span class="v">${esc(l.area)} m² · ${fmtM2(l)}</span></div>
         <div class="fact"><span class="k">Floor</span><span class="v">${floor}</span></div>
         <div class="fact"><span class="k">Building</span><span class="v">${esc(l.buildType||"—")}</span></div>
         <div class="fact"><span class="k">Lift</span>${liftHtml}</div>` : `
-        <div class="fact"><span class="k">Total price</span><span class="v big">${total} €/mo</span></div>
+        <div class="fact"><span class="k">Total price</span><span class="v big">${hasPrice(l)?total+" €/mo":"Cena dohodou"}</span></div>
         <div class="fact"><span class="k">Rent + utilities</span><span class="v">${esc(l.price)} € · ${utilLabel(l)}</span></div>
         <div class="fact"><span class="k">Size · €/m² (total)</span><span class="v">${esc(l.area)} m² · ${fmtM2(l)}</span></div>
         <div class="fact"><span class="k">Floor</span><span class="v">${floor}</span></div>
@@ -889,7 +940,7 @@ function renderMap(list){
     const lm=landmarkOf(l);
     mk.bindPopup('<div class="pin-pop"><b>'+esc(l.title)+'</b>'+
       '<img src="'+img+'" onerror="this.style.display=\'none\'">'+
-      '<span class="pp-price">'+(dealOf(l)==="sale"?fmtEur(totalPrice(l)):esc(l.price)+' €/mo')+'</span> · '+esc(l.area)+' m² · '+(l.floor?esc(l.floor):'—')+' · '+(l.lift?'lift':'no lift')+'<br>'+
+      '<span class="pp-price">'+(!hasPrice(l)?'Cena dohodou':(dealOf(l)==="sale"?fmtEur(totalPrice(l)):esc(l.price)+' €/mo'))+'</span> · '+esc(l.area)+' m² · '+(l.floor?esc(l.floor):'—')+' · '+(l.lift?'lift':'no lift')+'<br>'+
       '📍 '+esc(l.street||'')+(lm?' · near '+esc(lm.label):'')+'<br><a href="'+esc(l.url)+'" target="_blank" rel="noopener">Open listing ↗</a></div>');
     _markers.push(mk);
   });
@@ -925,11 +976,11 @@ function pct(a,b){ return b? Math.round(a/b*100)+"%" : "0%"; }
 function computeStats(){
   const L=LISTINGS, m2=[],sizes=[],totals=[],utils=[]; let ac=0,nac=0; const sc={};
   L.forEach(l=>{ const mm=perM2(l); if(mm!=null&&isFinite(mm)) m2.push(mm);
-    const a=+l.area; if(a) sizes.push(a); totals.push(totalPrice(l));
+    const a=+l.area; if(a) sizes.push(a); if(hasPrice(l)) totals.push(totalPrice(l));
     if(l.hasAc) ac++; else nac++;
     if(!l.energiesIncluded && l.energie!=null && l.energie!=="") utils.push(+l.energie||0);
     const s=(l.street||"").split(",")[0].trim()||"—"; sc[s]=(sc[s]||0)+1; });
-  const grp=pred=>{ const g=L.filter(pred); const gm=g.map(perM2).filter(x=>x!=null&&isFinite(x)); return {n:g.length, price:_avg(g.map(totalPrice)), m2:_avg(gm)}; };
+  const grp=pred=>{ const g=L.filter(pred); const gm=g.map(perM2).filter(x=>x!=null&&isFinite(x)); return {n:g.length, price:_avg(g.filter(hasPrice).map(totalPrice)), m2:_avg(gm)}; };
   return { n:L.length, avgM2:_avg(m2), minM2:m2.length?Math.min.apply(0,m2):null, maxM2:m2.length?Math.max.apply(0,m2):null,
     avgSize:_avg(sizes), avgTotal:_avg(totals), medTotal:median(totals), avgUtil:_avg(utils), utilN:utils.length, ac, nac,
     topStreets:Object.entries(sc).sort((a,b)=>b[1]-a[1]).slice(0,8),
