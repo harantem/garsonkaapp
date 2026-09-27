@@ -48,3 +48,6 @@ tmp/
 
 # Listing photos (source of truth lives in Supabase storage)
 photos/
+
+# Scraper output (regenerate any time with scrape.py)
+out/
