@@ -114,6 +114,14 @@
   .fact .v.big{color:var(--accent);font-size:15px}
   .addr .added{color:var(--muted)}
   .sortsel{font:inherit;font-size:12px;padding:5px 9px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);cursor:pointer}
+  /* Category switch in the header — garsónky <-> 3-izbové + domy */
+  .catswitch{display:inline-flex;gap:2px;padding:3px;background:var(--chip);border-radius:11px}
+  .head .catswitch{flex:1 1 100%;order:0;align-self:flex-start;margin-bottom:2px}
+  .catswitch button{font:inherit;font-size:13px;font-weight:600;padding:6px 14px;border:none;border-radius:8px;
+          background:transparent;color:var(--muted);cursor:pointer;white-space:nowrap;transition:background .12s ease,color .12s ease}
+  .catswitch button:hover{color:var(--ink)}
+  .catswitch button.on{background:#fff;color:var(--accent);box-shadow:var(--shadow)}
+  .catswitch button .cs-n{font-weight:500;opacity:.6;margin-left:6px}
   .bench{margin-top:4px;font-size:12px;font-weight:600;padding:6px 10px;border-radius:9px;display:inline-block;line-height:1.3}
   .bench.cheap{background:var(--save-bg);color:var(--save)}
   .bench.pricey{background:#fff4e5;color:#b45309}
@@ -225,6 +233,8 @@
     .head .sub{flex:1 1 100%;order:5;font-size:12px}
     .editbtn{order:2;margin-left:auto}
     #sortsel{order:3}
+    .head .catswitch{order:0;width:100%}
+    .catswitch button{flex:1;text-align:center;padding:8px 6px}
     .syncbar{order:4;margin-left:0}
 
     /* collapsible filters + presets */
@@ -277,6 +287,7 @@
   <main class="main">
     <div class="topbar">
       <div class="head">
+        <div class="catswitch" id="catswitch" role="tablist" aria-label="Listing category"></div>
         <h1 id="tab-title">New to review</h1>
         <span class="sub" id="tab-sub"></span>
         <select class="sortsel" id="sortsel" title="Sort listings">
@@ -328,18 +339,49 @@ const SUPABASE_URL      = "https://nfqmwccfeahkpuznkbla.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_VIa_sGDBf3gzVXKCm1wxPg_vMiyjo_w";
 /* ===================================================================== */
 
+/* ===== The two listing sets the header switch flips between =====
+   Both live in the same `apartments` table, told apart by the `category` column
+   (run category_setup.sql once). Add another entry here to add another set. */
+const CATEGORIES = {
+  garsonka: { label:"Garsónky", deal:"rent",
+    brandSub:"Bratislava · Staré Mesto · prenájom",
+    where:"your 15-min walkable area",
+    areaFilter:true,  showMap:true,
+    source:"https://www.nehnutelnosti.sk/vysledky/prenajom" },
+  sale3i:   { label:"3-izbové + domy", deal:"sale",
+    brandSub:"DNV · Vajnory · Záhorská Bystrica · predaj",
+    where:"Devínska Nová Ves, Vajnory a Záhorská Bystrica",
+    areaFilter:false, showMap:false,
+    source:"https://www.nehnutelnosti.sk/vysledky/predaj?locations=100012516&locations=100012515&locations=100012521&categories=300001&categories=200000&areaFrom=70" }
+};
+const CAT_IDS = Object.keys(CATEGORIES);
+let category = CATEGORIES[localStorage.getItem("garsonka_category")] ? localStorage.getItem("garsonka_category") : "garsonka";
+function cat(){ return CATEGORIES[category]; }
+function isSale(){ return cat().deal==="sale"; }
+/* Per-category localStorage key. Garsónky keep the original keys, so nothing you
+   already saved (filters, presets, archive) is lost. */
+function ck(base){ return category==="garsonka" ? base : base+"_"+category; }
+
 const EMBEDDED = {"source": "nehnutelnosti.sk – Bratislava Staré Mesto, 1-izb + garsónky, prenájom", "scrapedAt": "2026-06-13", "count": 20, "listings": [{"id": "JuRgfzENSJF", "title": "Prenájom samostatnej nepriechodnej izby v centre Bratislavy", "address": "Krížna, Bratislava-Staré Mesto, okres Bratislava I", "street": "Krížna", "price": 350, "energie": null, "energiesIncluded": true, "pricePerM2": "31,82", "area": 11, "floor": "1/4", "floorNum": 1, "floorTotal": 4, "lift": false, "buildType": "Zmiešaná", "rooms": "Garsónka", "image": "https://img.unitedclassifieds.sk/foto/ZmlsdGVyczpmb3JtYXQod2VicCkvanVs/lSpoTGHUb_fss", "url": "https://www.nehnutelnosti.sk/detail/JuRgfzENSJF/prenajom-samostatnej-nepriechodnej-izby-v-centre-bratislavy"}, {"id": "JuRAwga1iza", "title": "Prenájom samostatnej izby v 3 izbovom byte s terasou, vlastným dvorom a záhradkou, ako oddelený samostatný byt v rodinnom dome v Bratislave – Staré Mesto, Slávičie údolie.", "address": "Bratislava-Staré Mesto, okres Bratislava I", "street": "Bratislava-Staré Mesto", "price": 400, "energie": null, "energiesIncluded": false, "pricePerM2": "16", "area": 25, "floor": null, "floorNum": null, "floorTotal": null, "lift": false, "buildType": "Novostavba", "rooms": "1-izbový byt", "image": "https://img.unitedclassifieds.sk/foto/ZmlsdGVyczpmb3JtYXQod2VicCkvanVs/P69pWqBFA_fss", "url": "https://www.nehnutelnosti.sk/detail/JuRAwga1iza/prenajom-samostatnej-izby-v-3-izbovom-byte-s-terasou-vlastnym-dvorom-a-zahradkou-ako-oddeleny-samostatny-byt-v-rodinnom-dome-v-bratislave-stare-mesto-slavicie-udolie"}, {"id": "Ju2OXjdfnlT", "title": "Prenájom priestrannej izby v 2 izbovom byte s loggiou – Bratislava – Staré Mesto, lokalita Mozartova", "address": "Bratislava-Staré Mesto, okres Bratislava I", "street": "Bratislava-Staré Mesto", "price": 400, "energie": null, "energiesIncluded": false, "pricePerM2": "22,22", "area": 18, "floor": null, "floorNum": null, "floorTotal": null, "lift": true, "buildType": "Novostavba", "rooms": "Garsónka", "image": "https://img.unitedclassifieds.sk/foto/ZmlsdGVyczpmb3JtYXQod2VicCkvanVs/hDkprp7HB_fss", "url": "https://www.nehnutelnosti.sk/detail/Ju2OXjdfnlT/prenajom-priestrannej-zby-v-2-izbovom-byte-s-loggiou-bratislava-stare-mesto-lokalita-mozartova-v-prijemnom-tichom-prostredi-v-blizkom-dosahu-ku-prirode"}, {"id": "Juev-sCi24h", "title": "AXIS REAL | Pekná štýlová garsónka, PIVNICA, BA I SM, Slávičie údolie", "address": "Slávičie údolie, Bratislava-Staré Mesto, okres Bratislava I", "street": "Slávičie údolie", "price": 450, "energie": 150, "energiesIncluded": false, "pricePerM2": "14,06", "area": 32, "floor": "2/4", "floorNum": 2, "floorTotal": 4, "lift": true, "buildType": "Tehlová", "rooms": "Garsónka", "image": "https://img.unitedclassifieds.sk/foto/ZmlsdGVyczpmb3JtYXQod2VicCkvanVs/RVVIjdtyS_fss", "url": "https://www.nehnutelnosti.sk/detail/Juev-sCi24h/axis-real-pekna-stylova-garsonka-pivnica-ba-i-sm-slavicie-udolie"}, {"id": "Ju70pTFt6GS", "title": "KLIMATIZOVANÝ 1-izbový byt 40 m2, NADSTAVBA, CENTRUM Bratislavy / Heydukova ul.", "address": "Heydukova, Bratislava-Staré Mesto, okres Bratislava I", "street": "Heydukova", "price": 500, "energie": 200, "energiesIncluded": false, "pricePerM2": "12,5", "area": 40, "floor": "5/6", "floorNum": 5, "floorTotal": 6, "lift": true, "buildType": "Novostavba", "rooms": "1-izbový byt", "image": "https://img.unitedclassifieds.sk/foto/ZmlsdGVyczpmb3JtYXQod2VicCkvcnNm/nA0HLELPo_fss", "url": "https://www.nehnutelnosti.sk/detail/Ju70pTFt6GS/klimatizovany-1-izbovy-byt-40-m2-nadstavba-centrum-bratislavy-heydukova-ul"}, {"id": "Ju7AvM-kGnE", "title": "Prenajmeme veľký 1 izb byt na Heydukovej ulici", "address": "Heydukova, Bratislava-Staré Mesto, okres Bratislava I", "street": "Heydukova", "price": 500, "energie": 200, "energiesIncluded": false, "pricePerM2": "12,5", "area": 40, "floor": "5/6", "floorNum": 5, "floorTotal": 6, "lift": true, "buildType": "Tehlová", "rooms": "1-izbový byt", "image": "https://img.unitedclassifieds.sk/foto/ZmlsdGVyczpmb3JtYXQod2VicCkvanVs/NDsXLfws8_fss", "url": "https://www.nehnutelnosti.sk/detail/Ju7AvM-kGnE/prenajmeme-velky-1-izb-byt-na-heydukovej-ulici"}, {"id": "Ju3Q9teGy7p", "title": "BOSEN | Zariadená garzónka s balkónom, Blumentálska ul., BA", "address": "Blumentálska, Bratislava-Staré Mesto, okres Bratislava I", "street": "Blumentálska", "price": 500, "energie": 175, "energiesIncluded": false, "pricePerM2": "19,23", "area": 26, "floor": "5/8", "floorNum": 5, "floorTotal": 8, "lift": false, "buildType": "Zmiešaná", "rooms": "Garsónka", "image": "https://img.unitedclassifieds.sk/foto/ZmlsdGVyczpmb3JtYXQod2VicCkvanVs/n_BzYGVmv_fss", "url": "https://www.nehnutelnosti.sk/detail/Ju3Q9teGy7p/bosen-zariadena-garzonka-s-balkonom-blumentalska-ul-ba"}, {"id": "JuaRg_NbGP9", "title": "Prenájom 1 izb. bytu Steinov dvor", "address": "Steinov dvor, Bratislava-Staré Mesto, okres Bratislava I", "street": "Steinov dvor", "price": 520, "energie": 150, "energiesIncluded": false, "pricePerM2": "14,44", "area": 36, "floor": null, "floorNum": null, "floorTotal": null, "lift": false, "buildType": "Novostavba", "rooms": "1-izbový byt", "image": "https://img.unitedclassifieds.sk/foto/ZmlsdGVyczpmb3JtYXQod2VicCkvanVs/C0NLqwNZu_fss", "url": "https://www.nehnutelnosti.sk/detail/JuaRg_NbGP9/prenajom-1-izb-bytu-steinov-dvor"}, {"id": "JulWJBn0EHz", "title": "Príjemný 2i byt s balkónom, pri Horskom parku a Slavíne. Svetlá ul.", "address": "Svetlá, Bratislava-Staré Mesto, okres Bratislava I", "street": "Svetlá", "price": 520, "energie": 230, "energiesIncluded": false, "pricePerM2": "9,29", "area": 56, "floor": "1/11", "floorNum": 1, "floorTotal": 11, "lift": true, "buildType": "Panelová", "rooms": "2-izbový byt", "image": "https://img.unitedclassifieds.sk/foto/ZmlsdGVyczpmb3JtYXQod2VicCk6d2F0ZXJtYXJrKGp1bC9VSTBzX1VFUXRfZnNzLC0yNSwtMjUsNTAsMjAsMjApL2p1bA==/_Mg3p5V-f_fss", "url": "https://www.nehnutelnosti.sk/detail/JulWJBn0EHz/prijemny-2i-byt-s-balkonom-pri-horskom-parku-a-slavine-svetla-ul"}, {"id": "Jum1vVXXPn9", "title": "Na prenájom moderný 1-izbový byt v novostavbe Steinov dvor – Staré Mesto, Bratislava", "address": "Krížna, Bratislava-Staré Mesto, okres Bratislava I", "street": "Krížna", "price": 520, "energie": 150, "energiesIncluded": false, "pricePerM2": "14,44", "area": 36, "floor": "2/7", "floorNum": 2, "floorTotal": 7, "lift": true, "buildType": "Novostavba", "rooms": "1-izbový byt", "image": "https://img.unitedclassifieds.sk/foto/ZmlsdGVyczpmb3JtYXQod2VicCkvanVs/TGvMQAVS2_fss", "url": "https://www.nehnutelnosti.sk/detail/Jum1vVXXPn9/na-prenajom-moderny-1-izbovy-byt-v-novostavbe-steinov-dvor-stare-mesto-bratislava"}, {"id": "JuU4EhWTxOF", "title": "Pekný, slnečný 1-izbový byt, Malý trh, Staré Mesto", "address": "Malý trh, Bratislava-Staré Mesto, okres Bratislava I", "street": "Malý trh", "price": 550, "energie": null, "energiesIncluded": false, "pricePerM2": "17,19", "area": 32, "floor": "2/4", "floorNum": 2, "floorTotal": 4, "lift": false, "buildType": "Tehlová", "rooms": "1-izbový byt", "image": "https://img.unitedclassifieds.sk/foto/ZmlsdGVyczpmb3JtYXQod2VicCkvanVs/c8jcOlCtP_fss", "url": "https://www.nehnutelnosti.sk/detail/JuU4EhWTxOF/ponukame-na-prenajom-pekny-slnecny-1-izbovy-byt-nachadzajuci-sa-2poschodi4-v-tehlovom-dome-na-malom-trhu-v-lokalite-stare-mesto-byt-je-priestranny"}, {"id": "JuzP9cU5z3G", "title": "Prenájom byty 1 iz. NOVOSTAVBA Blumentál, Radlinského ul. BA I", "address": "Radlinského, Bratislava-Staré Mesto, okres Bratislava I", "street": "Radlinského", "price": 550, "energie": null, "energiesIncluded": false, "pricePerM2": "15,28", "area": 36, "floor": "2/6", "floorNum": 2, "floorTotal": 6, "lift": true, "buildType": "Novostavba", "rooms": "1-izbový byt", "image": "https://img.unitedclassifieds.sk/foto/ZmlsdGVyczpmb3JtYXQod2VicCkvanVs/T35EReNLa_fss", "url": "https://www.nehnutelnosti.sk/detail/JuzP9cU5z3G/prenajom-byty-1-iz-novostavba-blumental-radlinskeho-ul-ba-i"}, {"id": "JuzCOg_jA3y", "title": "REZERVOVANÝ 1-izbový byt na Špitálskej ulici", "address": "Špitálska, Bratislava-Staré Mesto, okres Bratislava I", "street": "Špitálska", "price": 555, "energie": 125, "energiesIncluded": false, "pricePerM2": "13,88", "area": 40, "floor": "4/5", "floorNum": 4, "floorTotal": 5, "lift": true, "buildType": "Tehlová", "rooms": "1-izbový byt", "image": "https://img.unitedclassifieds.sk/foto/ZmlsdGVyczpmb3JtYXQod2VicCk6d2F0ZXJtYXJrKHB1cy9RanAzd1paa2lfZnNzLC0yNSwtMjUsMjAsMjAsMjApL2p1bA==/nkxBPFGd8_fss", "url": "https://www.nehnutelnosti.sk/detail/JuzCOg_jA3y/1-izbovy-byt-na-spitalskej-ulici"}, {"id": "JuQBUw6AU18", "title": "Na prenájom kompletne zariadená garsónka v Starom Meste – Dunajská", "address": "Dunajská, Bratislava-Staré Mesto, okres Bratislava I", "street": "Dunajská", "price": 570, "energie": null, "energiesIncluded": false, "pricePerM2": "38", "area": 15, "floor": "5/6", "floorNum": 5, "floorTotal": 6, "lift": false, "buildType": "Zmiešaná", "rooms": "Garsónka", "image": "https://img.unitedclassifieds.sk/foto/ZmlsdGVyczpmb3JtYXQod2VicCk6d2F0ZXJtYXJrKHB1cy84V05ZaDRueExfZnNzLDI1LC0yNSwwLDIwLDIwKS9qdWw=/RGRkHu_0P_fss", "url": "https://www.nehnutelnosti.sk/detail/JuQBUw6AU18/na-prenajom-kompletne-zariadena-garsonka-v-starom-meste-dunajska"}, {"id": "JulEG0AgFso", "title": "Štýlové bývanie v srdci mesta s veľkou terasou a panoramatickým výhľadom!", "address": "Grösslingova, Bratislava-Staré Mesto, okres Bratislava I", "street": "Grösslingova", "price": 570, "energie": null, "energiesIncluded": false, "pricePerM2": "15,83", "area": 36, "floor": null, "floorNum": null, "floorTotal": null, "lift": true, "buildType": "Novostavba", "rooms": "1-izbový byt", "image": "https://img.unitedclassifieds.sk/foto/ZmlsdGVyczpmb3JtYXQod2VicCk6d2F0ZXJtYXJrKHB1cy83QVlJNC1NS25fZnNzLGNlbnRlcixjZW50ZXIsMCwyMCwyMCkvanVs/lA2NCmvmD_fss", "url": "https://www.nehnutelnosti.sk/detail/JulEG0AgFso/stylove-byvanie-v-srdci-mesta-s-velkou-terasou-a-panoramatickym-vyhladom"}, {"id": "JuYlGqB3kdt", "title": "Prenájom: 1 izbový zariadený byt, BA I – Staré Mesto, Tichá ul.", "address": "Tichá, Bratislava-Staré Mesto, okres Bratislava I", "street": "Tichá", "price": 570, "energie": 200, "energiesIncluded": false, "pricePerM2": "11,18", "area": 51, "floor": "7/10", "floorNum": 7, "floorTotal": 10, "lift": true, "buildType": "Tehlová", "rooms": "1-izbový byt", "image": "https://img.unitedclassifieds.sk/foto/ZmlsdGVyczpmb3JtYXQod2VicCkvanVs/0t79G3r70c_fss", "url": "https://www.nehnutelnosti.sk/detail/JuYlGqB3kdt/prenajom-1-izbovy-zariadeny-byt-ba-i-stare-mesto-ticha-ul"}, {"id": "Juzmx3VlsMc", "title": "1 IZBOVÝ BYT PO KOMPLETNEJ REKONŠTRUKCII s FAMÓZNYM VÝHĽADOM – STARÉ MESTO – Námestie SNP – MANDERLA", "address": "Nám. SNP, Bratislava-Staré Mesto, okres Bratislava I", "street": "Nám. SNP", "price": 590, "energie": 230, "energiesIncluded": false, "pricePerM2": "15,53", "area": 38, "floor": "9/10", "floorNum": 9, "floorTotal": 10, "lift": true, "buildType": "Tehlová", "rooms": "1-izbový byt", "image": "https://img.unitedclassifieds.sk/foto/ZmlsdGVyczpmb3JtYXQod2VicCk6d2F0ZXJtYXJrKHB1cy9xMkFNRXU1T3dfZnNzLGNlbnRlcixjZW50ZXIsMCwyMCwyMCkvanVs/yQPrPWuSLU_fss", "url": "https://www.nehnutelnosti.sk/detail/Juzmx3VlsMc/1-izbovy-byt-po-kompletnej-rekonstrukcii-s-famoznym-vyhladom-stare-mesto-namestie-snp-manderla"}, {"id": "JueJpKjNYoC", "title": "Skvelý 1i byt 20m2, NA KRÁTKODOBÝ PRENÁJOM 6 MESIACOV", "address": "Janáčkova, Bratislava-Staré Mesto, okres Bratislava I", "street": "Janáčkova", "price": 590, "energie": null, "energiesIncluded": false, "pricePerM2": "29,5", "area": 20, "floor": null, "floorNum": null, "floorTotal": null, "lift": false, "buildType": null, "rooms": "1-izbový byt", "image": "https://img.unitedclassifieds.sk/foto/ZmlsdGVyczpmb3JtYXQod2VicCkvanVs/2kkqhwZjFp_fss", "url": "https://www.nehnutelnosti.sk/detail/JueJpKjNYoC/skvely-1i-byt-20m2-na-kratkodoby-prenajom-6-mesiacov"}, {"id": "JuHHRn8MYQM", "title": "Grebeči real | jedinečný a kompletne zrekonštruovaný moderný 1-izbový byt, Námestie SNP", "address": "Námestie SNP, Bratislava-Staré Mesto, okres Bratislava I", "street": "Námestie SNP", "price": 590, "energie": null, "energiesIncluded": false, "pricePerM2": "15,53", "area": 38, "floor": "9/10", "floorNum": 9, "floorTotal": 10, "lift": true, "buildType": "Zmiešaná", "rooms": "1-izbový byt", "image": "https://img.unitedclassifieds.sk/foto/ZmlsdGVyczpmb3JtYXQod2VicCk6d2F0ZXJtYXJrKGp1bC84WWRua05OZVhfZnNzLGNlbnRlcixjZW50ZXIsMTAsMjAsMjApL2p1bA==/h2yFP_fwR_fss", "url": "https://www.nehnutelnosti.sk/detail/JuHHRn8MYQM/grebeci-real-ponuka-na-prenajom-jedinecny-a-kompletne-zrekonstruovany-moderny-1-izbovy-byt-namestie-snp-stare-mesto-bratislava"}, {"id": "JuKmk-fN0UZ", "title": "PRENÁJOM 1-izbový, Staré Mesto Vazovová, nezariadený", "address": "Vazovova, Bratislava-Staré Mesto, okres Bratislava I", "street": "Vazovova", "price": 600, "energie": null, "energiesIncluded": false, "pricePerM2": "15", "area": 40, "floor": "3/6", "floorNum": 3, "floorTotal": 6, "lift": true, "buildType": null, "rooms": "1-izbový byt", "image": "https://img.unitedclassifieds.sk/foto/ZmlsdGVyczpmb3JtYXQod2VicCkvanVs/e1L724lwX_fss", "url": "https://www.nehnutelnosti.sk/detail/JuKmk-fN0UZ/prenajom-1-izbovy-stare-mesto-vazovova-nezariadeny"}]}.listings;   // built-in copy, used as fallback
-let LISTINGS = EMBEDDED.slice();
+let ALL_LISTINGS = EMBEDDED.map(l=>Object.assign({category:"garsonka"}, l));  // every category
+let LISTINGS = [];                                                            // the active category only
+function catCount(id){ return ALL_LISTINGS.filter(l=>(l.category||"garsonka")===id).length; }
+function applyCategory(){
+  LISTINGS = ALL_LISTINGS.filter(l=>(l.category||"garsonka")===category);
+  if(cat().areaFilter) LISTINGS = LISTINGS.filter(inArea);   // walkable street set — garsónky only
+}
 const LS_KEY = "garsonka_state_v1";
 let state = loadState();              // { id: {status, reason} }
 let tab = "new";
 let sortBy = localStorage.getItem("garsonka_sort") || "price";
-let filters = (function(){ try{ return JSON.parse(localStorage.getItem("garsonka_filters"))||{}; }catch(e){ return {}; } })();
-let learnIgnore = (function(){ try{ return JSON.parse(localStorage.getItem("garsonka_learn_ignore"))||[]; }catch(e){ return []; } })();
-function saveLearnIgnore(){ localStorage.setItem("garsonka_learn_ignore", JSON.stringify(learnIgnore)); }
+function loadFilters(){ try{ return JSON.parse(localStorage.getItem(ck("garsonka_filters")))||{}; }catch(e){ return {}; } }
+let filters = loadFilters();
+function loadLearnIgnore(){ try{ return JSON.parse(localStorage.getItem(ck("garsonka_learn_ignore")))||[]; }catch(e){ return []; } }
+let learnIgnore = loadLearnIgnore();
+function saveLearnIgnore(){ localStorage.setItem(ck("garsonka_learn_ignore"), JSON.stringify(learnIgnore)); }
 const LEARN_STOP = new Set("a an the and or to of in on is it i its with no not too very for from by this that byt bytu byty izbovy izboveho izbovom izba izby izbe garsonka garsonku garsonky prenajom prenajat novostavba tehlova panelova zmiesana podlazie poschodie vytah mes eur bratislava stare mesto stareho mesta mestom ulica ulici namestie okres centrum srdci prilis daleko blizko draho lacno maly mala male velky velka velke novy nova stylove stylovy moderny pekny slnecny zariadeny nezariadeny kompletne lokalita rekonstrukcia far small big near work flat apartment room floor lift ground expensive cheap nice location area street price month".split(/\s+/));
 function _ltok(s){ return [...new Set(fold(s).split(/[^a-z0-9]+/).filter(w=>w.length>=4 && !LEARN_STOP.has(w) && !/^\d+$/.test(w)))]; }
-function saveFilters(){ localStorage.setItem("garsonka_filters", JSON.stringify(filters)); }
+function saveFilters(){ localStorage.setItem(ck("garsonka_filters"), JSON.stringify(filters)); }
 
 /* ===== Edit lock: view-only by default; password unlocks save/reject for 1 hour or until reload ===== */
 const EDIT_PW_HASH = "2c639a94b46a5261a2e095c6109051072e34fee602d448ac8f0471df091b8bf5"; // SHA-256 of the edit password
@@ -517,10 +559,15 @@ function normalizeRow(r){
   return { id:r.id, title:r.title, address:r.address, street:r.street, price:r.price,
     energie:r.energie, energiesIncluded:r.energies_included, pricePerM2:r.price_per_m2,
     area:r.area, floor:r.floor, floorNum:r.floor_num, floorTotal:r.floor_total, lift:r.lift, buildType:r.build_type, rooms:r.rooms,
-    image:r.image, url:r.url, deposit:r.deposit, rkFee:r.rk_fee, hasAc:r.has_ac, scrapedAt:r.scraped_at, listedAt:r.listed_at };
+    image:r.image, url:r.url, deposit:r.deposit, rkFee:r.rk_fee, hasAc:r.has_ac, scrapedAt:r.scraped_at, listedAt:r.listed_at,
+    category: CATEGORIES[r.category] ? r.category : "garsonka" };
 }
+function dealOf(l){ const c=CATEGORIES[l.category||"garsonka"]; return c ? c.deal : "rent"; }
+function nfmt(v){ return String(Math.round(v)).replace(/\B(?=(\d{3})+(?!\d))/g,"\u00a0"); }
+function fmtEur(v){ return (v==null||!isFinite(v)) ? "—" : nfmt(v)+" €"; }
 function totalPrice(l){
   const p = +l.price||0;
+  if(dealOf(l)==="sale") return p;     // a sale price is the whole price — no utilities on top
   if(l.energiesIncluded) return p;
   if(l.energie!=null && l.energie!=='') return p + (+l.energie||0);
   return p; // utilities not stated
@@ -545,6 +592,7 @@ function perM2(l){ const a=+l.area; if(!a) return null; return totalPrice(l)/a; 
 function fmtM2(l){ const m=perM2(l); return m==null ? "—" : (Math.round(m*10)/10).toString().replace(".",",")+" €/m²"; }
 function median(arr){ if(!arr.length) return null; const s=[...arr].sort((a,b)=>a-b); const m=s.length>>1; return s.length%2 ? s[m] : (s[m-1]+s[m])/2; }
 let STATS=null;
+let _snapDone={};   // one price snapshot per category per session
 function buildStats(){
   const all=[], byStreet={}, ac=[];
   LISTINGS.forEach(l=>{ const m=perM2(l); if(m==null) return; const e={id:l.id,m};
@@ -589,7 +637,7 @@ async function init(){
       const { data, error } = await sb.from("apartments").select("*").order("price",{ascending:true});
       if(error) throw error;
       if(data && data.length){
-        LISTINGS = data.map(normalizeRow);
+        ALL_LISTINGS = data.map(normalizeRow);
         state = {};
         data.forEach(r=>{ state[r.id] = {status:r.status||"new", reason:r.reason||""}; });
         banner("☁ synced with Supabase", "ok");
@@ -600,14 +648,15 @@ async function init(){
   } else {
     banner("◌ local mode — saving to this browser only", "warn");
   }
-  LISTINGS = LISTINGS.filter(inArea);   // only show listings within the 15-min walkable street set
+  applyCategory();                      // scope to the active category (+ walkable filter where it applies)
+  renderCatSwitch();                    // header switch: garsónky <-> 3-izbové + domy
   applyLearned();                       // auto-reject new listings matching a location learned from your reasons
   populateStreetFilter();
   wireFilters();
   updateEditUI();
   renderLearned();
   render();
-  if(sb){ window._snapDone=true; snapshotToday().catch(()=>{}); }   // record today's price snapshot (no-op until stats_setup.sql is run)
+  if(sb){ _snapDone[category]=true; snapshotToday().catch(()=>{}); }   // record today's price snapshot (no-op until stats_setup.sql is run)
 }
 
 async function setStatus(id, status){
@@ -634,6 +683,7 @@ function cardMapSrc(l){ const lm=landmarkOf(l); return lm
 
 function card(l){
   const st = statusOf(l.id);
+  const sale = dealOf(l)==="sale";
   const liftHtml = l.lift ? '<span class="v yes">Yes ✓</span>' : '<span class="v no">No ✕</span>';
   const acHtml = l.hasAc ? '<span class="v yes">Yes ✓</span>' : '<span class="v no">No</span>';
   const floor = l.floor ? esc(l.floor) : "—";
@@ -655,19 +705,26 @@ function card(l){
       </a>
       <img src="${PHOTO_BASE}${esc(l.id)}.webp" alt=""
            onerror="if(!this.dataset.fb){this.dataset.fb='1';this.src='photos/${esc(l.id)}.webp';}else{this.style.display='none';}">
-      <span class="price">${total} €/mo<small>total</small></span>
+      <span class="price">${sale?fmtEur(total):total+" €/mo"}<small>${sale?"asking price":"total"}</small></span>
       <a class="ph-photos" href="${esc(l.url)}" target="_blank" rel="noopener">📷 See all photos ↗</a>
     </div>
     <div class="body">
       <h3><a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.title)}</a></h3>
       <div class="addr"><a class="addrlink" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent((l.address||l.street||"")+", Bratislava")}" target="_blank" rel="noopener">📍 ${esc(l.address)}</a> · <span class="added">${daysAgo(l.listedAt||l.scrapedAt)}</span></div>
       <div class="facts">
+        ${sale ? `
+        <div class="fact"><span class="k">Asking price</span><span class="v big">${fmtEur(total)}</span></div>
+        <div class="fact"><span class="k">Type</span><span class="v">${esc(l.rooms||"—")}</span></div>
+        <div class="fact"><span class="k">Size · €/m²</span><span class="v">${esc(l.area)} m² · ${fmtM2(l)}</span></div>
+        <div class="fact"><span class="k">Floor</span><span class="v">${floor}</span></div>
+        <div class="fact"><span class="k">Building</span><span class="v">${esc(l.buildType||"—")}</span></div>
+        <div class="fact"><span class="k">Lift</span>${liftHtml}</div>` : `
         <div class="fact"><span class="k">Total price</span><span class="v big">${total} €/mo</span></div>
         <div class="fact"><span class="k">Rent + utilities</span><span class="v">${esc(l.price)} € · ${utilLabel(l)}</span></div>
         <div class="fact"><span class="k">Size · €/m² (total)</span><span class="v">${esc(l.area)} m² · ${fmtM2(l)}</span></div>
         <div class="fact"><span class="k">Floor</span><span class="v">${floor}</span></div>
         <div class="fact"><span class="k">Lift</span>${liftHtml}</div>
-        <div class="fact"><span class="k">Air conditioning</span>${acHtml}</div>
+        <div class="fact"><span class="k">Air conditioning</span>${acHtml}</div>`}
       </div>
       ${benchChip(l)}
       <div class="actions">
@@ -714,8 +771,8 @@ function syncFilterInputs(){
   Object.entries(FMAP).forEach(([id,k])=>{ const e=document.getElementById(id); if(e) e.value=filters[k]||""; });
   const d=document.getElementById("f-deal"); if(d) d.checked=!!filters.deal;
 }
-function loadPresets(){ try{ return JSON.parse(localStorage.getItem("garsonka_presets"))||{}; }catch(e){ return {}; } }
-function savePresets(p){ localStorage.setItem("garsonka_presets", JSON.stringify(p)); }
+function loadPresets(){ try{ return JSON.parse(localStorage.getItem(ck("garsonka_presets")))||{}; }catch(e){ return {}; } }
+function savePresets(p){ localStorage.setItem(ck("garsonka_presets"), JSON.stringify(p)); }
 function refreshPresetSelect(){ const sel=document.getElementById("f-preset"); const p=loadPresets();
   sel.innerHTML='<option value="">⭐ Presets…</option>'+Object.keys(p).map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join(""); }
 function wireFilters(){
@@ -734,6 +791,30 @@ function wireFilters(){
   document.getElementById("f-delpreset").addEventListener("click",()=>{ const sel=document.getElementById("f-preset"); const n=sel.value;
     if(!n){ alert("Pick a preset to delete first."); return; } if(!confirm("Delete preset \""+n+"\"?")) return;
     const p=loadPresets(); delete p[n]; savePresets(p); refreshPresetSelect(); });
+}
+
+function renderCatSwitch(){
+  const box=document.getElementById("catswitch");
+  if(box) box.innerHTML = CAT_IDS.map(id=>{
+    const n=catCount(id), on=(id===category);
+    return '<button type="button" role="tab" aria-selected="'+on+'" class="'+(on?"on":"")+'" onclick="switchCategory(\''+id+'\')">'
+      + esc(CATEGORIES[id].label) + (n?'<span class="cs-n">'+n+'</span>':'') + '</button>';
+  }).join("");
+  const sub=document.querySelector(".brand small"); if(sub) sub.textContent=cat().brandSub;
+  // The walkable-area map only means anything for the Staré Mesto rentals.
+  const show=!!cat().showMap;
+  [document.querySelector(".sidemap-label"), document.getElementById("mapview")]
+    .forEach(e=>{ if(e) e.style.display = show ? "" : "none"; });
+  const mp=document.getElementById("f-maxprice"); if(mp) mp.placeholder = isSale() ? "Max €" : "Max € total";
+  const mn=document.getElementById("f-minprice"); if(mn) mn.placeholder = "Min €";
+}
+function switchCategory(id){
+  if(!CATEGORIES[id] || id===category) return;
+  category=id; localStorage.setItem("garsonka_category", id);
+  filters=loadFilters(); learnIgnore=loadLearnIgnore();   // each category keeps its own
+  applyCategory(); applyLearned();
+  renderCatSwitch(); populateStreetFilter(); syncFilterInputs(); refreshPresetSelect(); renderLearned();
+  render(); window.scrollTo({top:0,behavior:"smooth"});
 }
 
 function render(){
@@ -773,7 +854,9 @@ function render(){
     + (fActive ? ` matching your filters (of ${tabTotal} in ${{new:"New to review",saved:"Saved",rejected:"Rejected",all:"All"}[tab]})` : "");
   const feed=document.getElementById("feed");
   if(list.length===0){
-    const msg = tab==="new" ? "All caught up — nothing new to review. 🎉"
+    const msg = catCount(category)===0
+             ? "No <b>"+esc(cat().label)+"</b> listings loaded yet — import them into the <code>apartments</code> table with <code>category = '"+esc(category)+"'</code> (see <code>category_setup.sql</code>).<br><br><a href=\""+esc(cat().source)+"\" target=\"_blank\" rel=\"noopener\">Open the nehnutelnosti.sk search ↗</a>"
+             : tab==="new" ? "All caught up — nothing new to review. 🎉"
              : tab==="saved" ? "Nothing saved yet. Hit ♥ Save on listings you like."
              : tab==="rejected" ? "Nothing rejected yet. Hit ✕ Reject and add a reason."
              : "No listings.";
@@ -787,6 +870,7 @@ function render(){
 
 let _map=null, _markers=[];
 function renderMap(list){
+  if(!cat().showMap) return;          // no walkable isochrone outside Staré Mesto
   list = list || visibleListings();
   if(!_map){
     _map=L.map('mapview');
@@ -805,7 +889,7 @@ function renderMap(list){
     const lm=landmarkOf(l);
     mk.bindPopup('<div class="pin-pop"><b>'+esc(l.title)+'</b>'+
       '<img src="'+img+'" onerror="this.style.display=\'none\'">'+
-      '<span class="pp-price">'+esc(l.price)+' €/mo</span> · '+esc(l.area)+' m² · '+(l.floor?esc(l.floor):'—')+' · '+(l.lift?'lift':'no lift')+'<br>'+
+      '<span class="pp-price">'+(dealOf(l)==="sale"?fmtEur(totalPrice(l)):esc(l.price)+' €/mo')+'</span> · '+esc(l.area)+' m² · '+(l.floor?esc(l.floor):'—')+' · '+(l.lift?'lift':'no lift')+'<br>'+
       '📍 '+esc(l.street||'')+(lm?' · near '+esc(lm.label):'')+'<br><a href="'+esc(l.url)+'" target="_blank" rel="noopener">Open listing ↗</a></div>');
     _markers.push(mk);
   });
@@ -830,7 +914,11 @@ function updateLearn(){
 
 /* ===== Statistics + Archive pages ===== */
 const NEW_PROJECTS=["skypark","sky park","metropolis","panorama","eurovea"];
-function isNewFlat(l){ const t=fold((l.title||"")+" "+(l.address||"")); return NEW_PROJECTS.some(p=>t.indexOf(p)>=0); }
+function isNewFlat(l){
+  // For sales there are no named downtown projects — go by the building type instead.
+  if(dealOf(l)==="sale") return fold(l.buildType||"")==="novostavba" || fold(l.title||"").indexOf("novostavb")>=0;
+  const t=fold((l.title||"")+" "+(l.address||"")); return NEW_PROJECTS.some(p=>t.indexOf(p)>=0);
+}
 function _avg(a){ return a.length? a.reduce((x,y)=>x+y,0)/a.length : null; }
 function r1(v){ return (v==null||!isFinite(v))?null:Math.round(v*10)/10; }
 function pct(a,b){ return b? Math.round(a/b*100)+"%" : "0%"; }
@@ -843,7 +931,7 @@ function computeStats(){
     const s=(l.street||"").split(",")[0].trim()||"—"; sc[s]=(sc[s]||0)+1; });
   const grp=pred=>{ const g=L.filter(pred); const gm=g.map(perM2).filter(x=>x!=null&&isFinite(x)); return {n:g.length, price:_avg(g.map(totalPrice)), m2:_avg(gm)}; };
   return { n:L.length, avgM2:_avg(m2), minM2:m2.length?Math.min.apply(0,m2):null, maxM2:m2.length?Math.max.apply(0,m2):null,
-    avgSize:_avg(sizes), avgTotal:_avg(totals), avgUtil:_avg(utils), utilN:utils.length, ac, nac,
+    avgSize:_avg(sizes), avgTotal:_avg(totals), medTotal:median(totals), avgUtil:_avg(utils), utilN:utils.length, ac, nac,
     topStreets:Object.entries(sc).sort((a,b)=>b[1]-a[1]).slice(0,8),
     oldG:grp(l=>!isNewFlat(l)), newG:grp(l=>isNewFlat(l)) };
 }
@@ -903,15 +991,17 @@ function renderProfile(feed){
 }
 function renderStats(feed){
   const s=computeStats();
-  const eur=v=>v==null?"—":Math.round(v)+" €";
-  const m2v=v=>v==null?"—":(Math.round(v*10)/10).toString().replace(".",",")+" €/m²";
+  const sale=isSale();
+  const eur=v=>v==null?"—":fmtEur(v);
+  const m2v=v=>v==null?"—":(sale?nfmt(v):(Math.round(v*10)/10).toString().replace(".",","))+" €/m²";
   const nm=v=>v==null?"—":(Math.round(v*10)/10).toString().replace(".",",");
   const stat=(l,v,sub)=>'<div class="stat"><div class="sv">'+v+'</div><div class="sl">'+l+'</div>'+(sub?'<div class="ss">'+sub+'</div>':'')+'</div>';
-  let h='<div class="stats-wrap"><div class="arch-head"><div class="stat-sub">Across all '+s.n+' flats tracked in your 15-min area.</div><button class="pb-btn" onclick="tab=\'archive\';render();window.scrollTo({top:0});">🗄 Open Archive</button></div><div class="stat-grid">';
-  h+=stat("Avg €/m² (total price)", m2v(s.avgM2), "low "+m2v(s.minM2)+" · high "+m2v(s.maxM2));
-  h+=stat("Avg total price / flat", eur(s.avgTotal));
+  let h='<div class="stats-wrap"><div class="arch-head"><div class="stat-sub">Across all '+s.n+' '+(sale?"properties":"flats")+' tracked in '+esc(cat().where)+'.</div><button class="pb-btn" onclick="tab=\'archive\';render();window.scrollTo({top:0});">🗄 Open Archive</button></div><div class="stat-grid">';
+  h+=stat(sale?"Avg €/m²":"Avg €/m² (total price)", m2v(s.avgM2), "low "+m2v(s.minM2)+" · high "+m2v(s.maxM2));
+  h+=stat(sale?"Avg asking price":"Avg total price / flat", eur(s.avgTotal));
   h+=stat("Avg size", nm(s.avgSize)+" m²");
-  h+=stat("Avg utilities / flat", eur(s.avgUtil), s.utilN+" flats bill separately");
+  h+= sale ? stat("Median asking price", eur(s.medTotal))
+           : stat("Avg utilities / flat", eur(s.avgUtil), s.utilN+" flats bill separately");
   h+='</div>';
   const C1="#006aff",C0="#dfe3ea";
   h+='<div class="stat-card"><h3>Air conditioning</h3><div class="pie-row">'+pieSVG([{value:s.ac,color:C1},{value:s.nac,color:C0}])+'<div class="legend"><div><span class="dot" style="background:'+C1+'"></span> A/C — '+s.ac+' ('+pct(s.ac,s.ac+s.nac)+')</div><div><span class="dot" style="background:'+C0+'"></span> No A/C — '+s.nac+' ('+pct(s.nac,s.ac+s.nac)+')</div></div></div></div>';
@@ -919,30 +1009,30 @@ function renderStats(feed){
   const mc=s.topStreets.length?s.topStreets[0][1]:1;
   s.topStreets.forEach(function(e){ h+='<div class="bar-row"><span class="bn">'+esc(e[0])+'</span><span class="bb"><span class="bf" style="width:'+Math.round(e[1]/mc*100)+'%"></span></span><span class="bc">'+e[1]+'</span></div>'; });
   h+='</div></div>';
-  h+='<div class="stat-card"><h3>Old vs new-build</h3><div class="stat-sub">New = Sky Park, Metropolis, Panorama, Eurovea. Everything else counts as old.</div><table class="ovn"><tr><th></th><th>Flats</th><th>Avg total</th><th>Avg €/m²</th></tr><tr><td>Old</td><td>'+s.oldG.n+'</td><td>'+eur(s.oldG.price)+'</td><td>'+m2v(s.oldG.m2)+'</td></tr><tr><td>New-build</td><td>'+s.newG.n+'</td><td>'+eur(s.newG.price)+'</td><td>'+m2v(s.newG.m2)+'</td></tr></table></div>';
+  h+='<div class="stat-card"><h3>Old vs new-build</h3><div class="stat-sub">'+(sale?"New = Novostavba, by building type or title.":"New = Sky Park, Metropolis, Panorama, Eurovea.")+' Everything else counts as old.</div><table class="ovn"><tr><th></th><th>Flats</th><th>Avg total</th><th>Avg €/m²</th></tr><tr><td>Old</td><td>'+s.oldG.n+'</td><td>'+eur(s.oldG.price)+'</td><td>'+m2v(s.oldG.m2)+'</td></tr><tr><td>New-build</td><td>'+s.newG.n+'</td><td>'+eur(s.newG.price)+'</td><td>'+m2v(s.newG.m2)+'</td></tr></table></div>';
   h+='<div class="stat-card"><h3>Price trend over time</h3><div class="stat-sub">Avg €/m² per day — old vs new-build.</div><div id="trend-box"><div class="muted">Loading…</div></div><div class="legend" style="flex-direction:row;gap:16px;margin-top:8px"><div><span class="dot" style="background:#8a8f98"></span> Old</div><div><span class="dot" style="background:#006aff"></span> New-build</div></div></div>';
   h+='</div>';
   feed.innerHTML=h;
-  const done=window._snapDone?Promise.resolve():(window._snapDone=true, snapshotToday().catch(()=>{}));
+  const done=_snapDone[category]?Promise.resolve():(_snapDone[category]=true, snapshotToday().catch(()=>{}));
   done.then(()=>loadSnapshots()).then(rows=>{ const el=document.getElementById("trend-box"); if(el) el.innerHTML=trendSVG(rows||[],"m2"); })
     .catch(()=>{ const el=document.getElementById("trend-box"); if(el) el.innerHTML='<div class="muted">History needs a one-time setup: run <b>stats_setup.sql</b> in Supabase, then a point is recorded each day.</div>'; });
 }
 async function snapshotToday(){
   if(!sb) throw new Error("no sb");
   const s=computeStats(), today=new Date().toISOString().slice(0,10);
-  const rows=[{snap_date:today,grp:"all",avg_price:r1(s.avgTotal),avg_m2:r1(s.avgM2),avg_size:r1(s.avgSize),n:s.n},
-    {snap_date:today,grp:"old",avg_price:r1(s.oldG.price),avg_m2:r1(s.oldG.m2),avg_size:null,n:s.oldG.n},
-    {snap_date:today,grp:"new",avg_price:r1(s.newG.price),avg_m2:r1(s.newG.m2),avg_size:null,n:s.newG.n}];
-  const { error }=await sb.from("stats_snapshots").upsert(rows,{onConflict:"snap_date,grp"});
+  const rows=[{snap_date:today,category,grp:"all",avg_price:r1(s.avgTotal),avg_m2:r1(s.avgM2),avg_size:r1(s.avgSize),n:s.n},
+    {snap_date:today,category,grp:"old",avg_price:r1(s.oldG.price),avg_m2:r1(s.oldG.m2),avg_size:null,n:s.oldG.n},
+    {snap_date:today,category,grp:"new",avg_price:r1(s.newG.price),avg_m2:r1(s.newG.m2),avg_size:null,n:s.newG.n}];
+  const { error }=await sb.from("stats_snapshots").upsert(rows,{onConflict:"snap_date,grp,category"});
   if(error) throw error;
 }
-async function loadSnapshots(){ if(!sb) return []; const { data, error }=await sb.from("stats_snapshots").select("*").order("snap_date",{ascending:true}); if(error) throw error; return data||[]; }
+async function loadSnapshots(){ if(!sb) return []; const { data, error }=await sb.from("stats_snapshots").select("*").eq("category",category).order("snap_date",{ascending:true}); if(error) throw error; return data||[]; }
 /* ----- Archive ----- */
-function loadArchive(){ try{ return JSON.parse(localStorage.getItem("garsonka_archive"))||{}; }catch(e){ return {}; } }
-function saveArchiveStore(a){ localStorage.setItem("garsonka_archive", JSON.stringify(a)); }
+function loadArchive(){ try{ return JSON.parse(localStorage.getItem(ck("garsonka_archive")))||{}; }catch(e){ return {}; } }
+function saveArchiveStore(a){ localStorage.setItem(ck("garsonka_archive"), JSON.stringify(a)); }
 function syncArchive(){
   const a=loadArchive(); let ch=false; const today=new Date().toISOString().slice(0,10);
-  LISTINGS.forEach(l=>{ if(statusOf(l.id)==="saved" && !a[l.id]){ a[l.id]={id:l.id,title:l.title,street:l.street,address:l.address,price:l.price,total:totalPrice(l),area:l.area,pricePerM2:r1(perM2(l)),floor:l.floor,lift:!!l.lift,hasAc:!!l.hasAc,url:l.url,image:PHOTO_BASE+l.id+".webp",archivedAt:today}; ch=true; } });
+  LISTINGS.forEach(l=>{ if(statusOf(l.id)==="saved" && !a[l.id]){ a[l.id]={id:l.id,title:l.title,street:l.street,address:l.address,deal:dealOf(l),price:l.price,total:totalPrice(l),area:l.area,pricePerM2:r1(perM2(l)),floor:l.floor,lift:!!l.lift,hasAc:!!l.hasAc,url:l.url,image:PHOTO_BASE+l.id+".webp",archivedAt:today}; ch=true; } });
   if(ch) saveArchiveStore(a); return a;
 }
 function renderArchive(feed){
@@ -950,16 +1040,16 @@ function renderArchive(feed){
   let h='<div class="stats-wrap"><div class="arch-head"><div class="stat-sub">'+items.length+' saved flat'+(items.length===1?"":"s")+' archived — kept even if they leave the market.</div><div class="arch-btns"><button class="pb-btn" onclick="exportArchive(\'csv\')">⬇ Export CSV</button><button class="pb-btn" onclick="exportArchive(\'json\')">⬇ Export JSON</button></div></div>';
   if(!items.length){ feed.innerHTML=h+'<div class="empty-feed">Nothing archived yet. Save a flat (♥) and it is preserved here.</div></div>'; return; }
   h+='<div class="arch-grid">';
-  items.forEach(function(l){ h+='<div class="arch-card"><div class="ac-img" style="background-image:url(\''+esc(l.image)+'\')"></div><div class="ac-body"><div class="ac-price">'+(l.total||l.price)+' €/mo</div><div class="ac-t"><a href="'+esc(l.url)+'" target="_blank" rel="noopener">'+esc(l.title||"")+'</a></div><div class="ac-meta">📍 '+esc(l.street||"")+' · '+esc(l.area||"?")+' m² · '+(l.pricePerM2!=null?esc((""+l.pricePerM2).replace(".",","))+" €/m²":"—")+'</div><div class="ac-when">saved '+esc(l.archivedAt||"")+'</div></div></div>'; });
+  items.forEach(function(l){ h+='<div class="arch-card"><div class="ac-img" style="background-image:url(\''+esc(l.image)+'\')"></div><div class="ac-body"><div class="ac-price">'+(l.deal==="sale"?fmtEur(l.total||l.price):(l.total||l.price)+' €/mo')+'</div><div class="ac-t"><a href="'+esc(l.url)+'" target="_blank" rel="noopener">'+esc(l.title||"")+'</a></div><div class="ac-meta">📍 '+esc(l.street||"")+' · '+esc(l.area||"?")+' m² · '+(l.pricePerM2!=null?esc((""+l.pricePerM2).replace(".",","))+" €/m²":"—")+'</div><div class="ac-when">saved '+esc(l.archivedAt||"")+'</div></div></div>'; });
   feed.innerHTML=h+'</div></div>';
 }
 function exportArchive(fmt){
   const items=Object.values(loadArchive()); let blob,name;
-  if(fmt==="json"){ blob=new Blob([JSON.stringify(items,null,2)],{type:"application/json"}); name="garsonka-saved.json"; }
-  else { const cols=["id","title","street","address","total","price","area","pricePerM2","floor","lift","hasAc","url","archivedAt"];
+  if(fmt==="json"){ blob=new Blob([JSON.stringify(items,null,2)],{type:"application/json"}); name=category+"-saved.json"; }
+  else { const cols=["id","title","street","address","deal","total","price","area","pricePerM2","floor","lift","hasAc","url","archivedAt"];
     const q=v=>{ v=(v==null?"":String(v)); return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; };
     const csv=[cols.join(",")].concat(items.map(o=>cols.map(c=>q(o[c])).join(","))).join("\n");
-    blob=new Blob([csv],{type:"text/csv;charset=utf-8"}); name="garsonka-saved.csv"; }
+    blob=new Blob([csv],{type:"text/csv;charset=utf-8"}); name=category+"-saved.csv"; }
   const u=URL.createObjectURL(blob),a=document.createElement("a"); a.href=u; a.download=name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(u),1500);
 }
 

@@ -9,6 +9,9 @@
 --   'sale3i'    Devínska Nová Ves · Vajnory · Záhorská Bystrica · PREDAJ
 --               3-izbové byty + domy, plocha od 70 m²
 --               https://www.nehnutelnosti.sk/vysledky/predaj?locations=100012516&locations=100012515&locations=100012521&categories=300001&categories=200000&areaFrom=70
+--               plus the same three districts on bezrealitky.sk (owner-direct,
+--               one search per district, plocha od 65 m²) — those rows carry a
+--               'br-' id prefix. See SEARCHES in scrape.py.
 
 -- 1) apartments: add the category column and backfill existing rows.
 alter table public.apartments

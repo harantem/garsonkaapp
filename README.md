@@ -1,8 +1,8 @@
 # Garsónka app
 
 A single-file apartment tracker for Bratislava listings scraped from
-[nehnutelnosti.sk](https://www.nehnutelnosti.sk). Browse, save, reject with a reason,
-and let it learn which locations to auto-reject. Decisions sync to Supabase so the
+[nehnutelnosti.sk](https://www.nehnutelnosti.sk) and [bezrealitky.sk](https://www.bezrealitky.sk).
+Browse, save, reject with a reason, and let it learn which locations to auto-reject. Decisions sync to Supabase so the
 phone and the laptop stay in step.
 
 Everything lives in **`index.html`** — no build step, no framework, no `package.json`.
@@ -49,9 +49,10 @@ The header has a segmented switch between two listing sets:
 | `category` | `garsonka` | `sale3i` |
 | Deal | Prenájom (rent) | Predaj (sale) |
 | Type | Garsónka / 1-izbový | 3-izbový byt + Rodinný dom |
-| Area | any | ≥ 70 m² |
+| Area | any | ≥ 70 m² (≥ 65 m² on bezrealitky) |
 | Locations | Staré Mesto (15-min walkable set) | Devínska Nová Ves, Vajnory, Záhorská Bystrica |
 | Prices | €/month | full asking price |
+| Sources | nehnutelnosti.sk | nehnutelnosti.sk + bezrealitky.sk (`br-` id prefix) |
 
 Both sets live in the same `apartments` table, told apart by the `category` column.
 Selection persists in `localStorage`.
@@ -72,12 +73,13 @@ rows with that `category` value. Nothing else needs to change.
 
 ## Adding listings (scraping)
 
-**`scrape.py`** turns a nehnutelnosti.sk search into ready-to-run SQL. Plain `python3`,
-stdlib only — nothing to install.
+**`scrape.py`** turns a nehnutelnosti.sk or bezrealitky.sk search into ready-to-run SQL.
+Plain `python3`, stdlib only — nothing to install.
 
 ```bash
-python3 scrape.py                        # both categories, with detail pages
+python3 scrape.py                        # both categories, both sites, with detail pages
 python3 scrape.py --category sale3i      # just the sale listings
+python3 scrape.py --source bezrealitky   # just the owner-direct listings
 python3 scrape.py --photos --audit       # mirror photos, report parity losses
 python3 scrape.py --limit 5 --no-detail  # smoke test
 ```
@@ -96,6 +98,7 @@ your saved/rejected decisions. **Run `category_setup.sql` first** — the insert
 | Flag | Default | Effect |
 |---|---|---|
 | `--category` | `all` | `garsonka`, `sale3i`, or `all` |
+| `--source` | `all` | `nehnutelnosti`, `bezrealitky`, or `all` — crawl one site's searches only |
 | `--no-detail` | off | search pages only — fast, but fewer fields |
 | `--photos` | off | mirror cover photos into `--photo-dir`, like the Edge Function |
 | `--photo-dir` | `photos` | where `--photos` writes |
@@ -110,26 +113,75 @@ of truth.
 ### The search URLs
 
 Baked into the `SEARCHES` dict at the top of the script; edit there to change what gets
-tracked.
+tracked. Each URL is dispatched to a parser by host, so the two sites can sit in the same
+category list.
 
-- **`garsonka`** — two searches (garsónky + 1-izbové, Staré Mesto, prenájom), merged and
-  de-duped by id.
-- **`sale3i`** — the sale search: DNV / Vajnory / Záhorská Bystrica, 3-izbové + domy,
-  from 70 m².
+- **`garsonka`** — two nehnutelnosti searches (garsónky + 1-izbové, Staré Mesto,
+  prenájom), merged and de-duped by id.
+- **`sale3i`** — four searches over the same three districts:
+  - nehnutelnosti: DNV / Vajnory / Záhorská Bystrica, 3-izbové + domy, from 70 m².
+  - bezrealitky: one per district (`regionOsmIds=R2190578` Vajnory, `R2208779` DNV,
+    `R2208773` Záhorská Bystrica), `DISP_3_IZB` + `estateType=BYT` + `PRODEJ`, from
+    **65 m²** — deliberately below the other source's 70, because owner-direct stock
+    here is thin enough that a flat missing the cut by one square metre is worth
+    seeing. Owner-direct means these are flats the nehnutelnosti search cannot see
+    at all.
 
-Pagination is automatic (`&page=N`), stopping when a page returns no new ids or the
-site's own reported total is reached.
+Copying a bezrealitky search out of the browser gets you two extras that the script
+**drops on purpose**: a `boundaryPoints` polygon and a `#lat/lng/zoom` fragment. Both are
+map-viewport state — the region ids already fix the search area, each district returns the
+same listings without the polygon, and a fragment would end up after the `&page=N` the
+crawler appends. `osm_value` is decorative too; `regionOsmIds` is what the site filters on.
+
+Pagination is automatic (`&page=N` on both sites), stopping when a page returns no new ids
+or the site's own reported total is reached.
+
+These three districts are small and owner-direct sale ads are rare, so expect a handful of
+rows or none at all — the last run returned **2**, both in DNV. That is the search being
+honest, not the parser failing: at the time of writing bezrealitky had *zero* sale listings
+of any kind in Vajnory, and one non-3-izbový flat in Záhorská Bystrica. `--source
+bezrealitky --no-detail` takes seconds if you want to re-check.
 
 ### How it parses
 
-The site is a Next.js App Router app: listing data arrives as flight chunks in
-`self.__next_f.push([1,"…"])`. For most columns the script concatenates those chunks and
-reads the real JSON out of them rather than regexing markup — so an unrelated markup
-change won't quietly corrupt a field.
+Both sites are Next.js apps, and neither is scraped by regexing markup — the script reads
+the real JSON the page shipped, so an unrelated markup change won't quietly corrupt a
+field.
+
+**nehnutelnosti.sk** is the App Router: listing data arrives as flight chunks in
+`self.__next_f.push([1,"…"])`, which the script concatenates and then slices balanced JSON
+objects out of.
+
+**bezrealitky.sk** is the Pages Router: everything sits in one
+`<script id="__NEXT_DATA__">` blob. Search pages give an Apollo cache of thin `Advert`
+objects — `br_parse_search` matches the `listAdverts(…)` cache key exactly, because the
+same cache also holds `listSimilarAdverts` (near-misses from *other* districts, shown as
+suggestions) and a `discountedOnly` teaser; taking either would smuggle in listings the
+search never matched. Detail pages carry the whole listing as `pageProps.origAdvert`.
 
 - **Search pages** carry id, title, address, street, price, area, €/m², image and rooms.
 - **Detail pages** add floor / `floor_num` / `floor_total`, lift, `build_type`,
   `deposit`, `rk_fee`, `has_ac` — plus the three parity fields below.
+
+Three bezrealitky quirks worth knowing, all handled in `br_*`:
+
+- There is no title field; `imageAltText` ("Predaj bytu 3-izbový 70 m², Eisnerova, …") is
+  what the site itself puts in the card heading, so that becomes `title`.
+- `floor` is an **enum** (`GROUND` / `MIDDLE` / …). The number is `etage`, and
+  `totalFloors` completes the `7/8` text.
+- No €/m² is published, so `br_ppm2` divides and formats it the same way the
+  nehnutelnosti column reads (Slovak decimal comma, no thousands separator).
+
+`disposition` and `construction` are mapped to the wording already in the table
+(`DISP_3_IZB` → `3 izbový byt`, `PANEL`/`BRICK`/`MIXED`/`SKELET` →
+`Panelová`/`Tehlová`/`Zmiešaná`/`Skeletová`). Only values actually seen in the data are
+mapped; anything new passes through raw, so an unknown enum shows up in the column rather
+than silently becoming null.
+
+**`listed_at` is null for every bezrealitky row, and cannot be fixed by parsing harder** —
+the site publishes no post date anywhere, on the search page or the detail page. The only
+date on the page is `availableFrom`, which is a different thing and would misreport market
+age. Null reads as "unknown" in the app; day zero would have read as "listed today".
 
 `--no-detail` skips that second pass. Much faster, but those fields come back null and
 `listed_at` falls back to the search page's `createdAt`.
@@ -146,6 +198,11 @@ sparse on houses; `lift` is always stated.)
 The listing **id** is the path segment in the detail URL and the table's primary key:
 `nehnutelnosti.sk/detail/`**`JuRgfzENSJF`**`/prenajom-samostatnej-…`
 
+bezrealitky ids are plain numbers (`1062799`), so they get a **`br-`** prefix —
+`br-1062799`. Nothing in the app parses an id, but the prefix keeps the two sites from ever
+colliding on the primary key and makes the source of a row obvious in the table. De-duping
+happens on the prefixed id, so it is per-site by construction.
+
 ### Server parity — three fields are deliberately not parsed the clean way
 
 `listing-photo` fires on every insert and **overwrites** three fields. So for those, the
@@ -161,6 +218,13 @@ which makes what lands in `out/` what the table will actually hold:
 They sit in a fenced `SERVER PARITY` block and run on the **raw HTML**, exactly as the
 Edge Function does — same regexes, same precedence, same un-escaping. **Change one side
 and you must change the other**, or inserts start mutating rows again.
+
+The webhook fires on every insert whatever site the row's `url` points at, so the same
+three ports also run over bezrealitky pages. There they normally match nothing — no
+`createdAt`, no `powerCosts`, no `img.nehnutelnosti.sk` URL — but `findUtilities` also
+tests free text, and a description saying "vrátane energií" **does** trip it. So the ports
+run rather than being assumed away; only when they come back empty does the bezrealitky
+parser use the structured `charges` (0 there means "not stated", not "free").
 
 **That precedence is the function's, and it is not the safe one.** `findUtilities` tests
 free text across the whole page *before* reading the structured `powerCosts`, so it can
@@ -204,6 +268,23 @@ rows you inserted stay as you inserted them.
 finds, fetched with a User-Agent and **no Referer** (a Referer trips the hot-link 403).
 Handy for seeing what the bucket will get, and `index.html` falls back to
 `photos/<id>.webp` whenever Storage has no image.
+
+**bezrealitky rows get no photo from the webhook at all.** `findImageUrl` only matches
+`img.nehnutelnosti.sk`, so the bucket stays empty for them and the card renders with no
+image — and the app never falls back to the `image` column. `--photos` mirrors the site's
+own cover instead and marks it `local-only`; those bytes only reach the app once
+`upload_photos.command` has pushed `photos/` into the bucket:
+
+```
+[1/1] br-1062799 ok  photo: saved 147kB local-only
+   1 covers are local-only (bezrealitky): the insert webhook cannot fetch them, so run
+   upload_photos.command to get them into the bucket
+```
+
+The file keeps the `.webp` name the app asks for even though bezrealitky serves JPEG —
+`<img>` sniffs the bytes, so it renders either way. To make the webhook handle these too,
+widen `findImageUrl` to accept `api.bezrealitky.cz/media/cache/…` (those URLs are neither
+signed nor hot-link protected, so it is a one-line change) and redeploy.
 
 Backfill rows that predate the webhook:
 
